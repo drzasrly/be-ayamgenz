@@ -60,9 +60,10 @@ class DokuController extends Controller
                 if (!$menu) continue;
 
                 // =========================
-                // KURANGI STOK
+                // KURANGI STOK (nasi selalu tersedia tetapi tetap dikurangi)
                 // =========================
-                if ($menu->stok >= $trx->qty) {
+                $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
+                if ($isNasi || $menu->stok >= $trx->qty) {
                     $menu->decrement('stok', $trx->qty);
                 }
 

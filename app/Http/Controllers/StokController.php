@@ -132,4 +132,38 @@ class StokController extends Controller
             ->with('success','Stok berhasil dihapus');
     }
 
+    /**
+     * Tampilkan form tambah stok menu
+     */
+    public function editMenuStok($id)
+    {
+        $menu = Menu::findOrFail($id);
+        return view('menu.stok', compact('menu'));
+    }
+
+    /**
+     * Update/tambah stok menu
+     */
+    public function updateMenuStok(Request $request, $id)
+    {
+        $request->validate([
+            'stok' => 'required|integer|min:1'
+        ]);
+
+        $menu = Menu::findOrFail($id);
+        $menu->increment('stok', $request->stok);
+
+        return redirect()->route('stok.index')->with('success', 'Stok menu berhasil ditambahkan.');
+    }
+
+    /**
+     * Hapus bahan mentah
+     */
+    public function destroyBahan($id)
+    {
+        $bahan = Bahan::findOrFail($id);
+        $bahan->delete();
+
+        return redirect()->route('stok.index')->with('success', 'Bahan mentah berhasil dihapus.');
+    }
 }

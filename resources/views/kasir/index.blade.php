@@ -156,6 +156,7 @@
                     <th class="text-center">Qty</th>
                     <th class="text-end">Total</th>
                     <th class="text-center">Pembayaran</th> <!-- 🔥 TAMBAHAN -->
+                    <th class="text-center">Status</th>
                     <th class="text-center">Aksi</th>
                 </tr>
             </thead>
@@ -203,6 +204,19 @@
                         @endif
                     </td>
 
+                    <!-- 🔥 STATUS PEMBAYARAN -->
+                    <td class="text-center">
+                        @if($t->status == 'success')
+                            <span class="badge bg-success rounded-pill px-3"><i class="fas fa-check-circle me-1"></i> Sukses</span>
+                        @elseif($t->status == 'pending')
+                            <span class="badge bg-warning text-dark rounded-pill px-3"><i class="fas fa-clock me-1"></i> Pending</span>
+                        @elseif($t->status == 'failed')
+                            <span class="badge bg-danger rounded-pill px-3"><i class="fas fa-times-circle me-1"></i> Gagal</span>
+                        @else
+                            <span class="badge bg-secondary rounded-pill px-3">{{ $t->status }}</span>
+                        @endif
+                    </td>
+
                     <td class="text-center">
                         <a href="/kasir/edit/{{ $t->id }}" class="btn btn-sm btn-outline-warning">
                             <i class="fas fa-edit"></i>
@@ -213,7 +227,7 @@
 
                 @empty
                 <tr>
-                    <td colspan="7" class="text-center py-5 text-muted">
+                    <td colspan="8" class="text-center py-5 text-muted">
                         <i class="fas fa-receipt fa-3x mb-3 opacity-25"></i>
                         <p class="mb-0">Belum ada transaksi hari ini</p>
                     </td>

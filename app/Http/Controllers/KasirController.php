@@ -122,6 +122,15 @@ class KasirController extends Controller
                 $invoice = 'INV-' . time();
                 foreach ($cartItems as $item) {
                     $menu = $item->menu;
+
+                    // Kurangi stok menu (nasi selalu tersedia tetapi tetap dikurangi)
+                    $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
+                    if ($isNasi || $menu->stok >= $item->qty) {
+                        $menu->decrement('stok', $item->qty);
+                    } else {
+                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' tidak mencukupi.');
+                    }
+
                     Transaksi::create([
                         'invoice'           => $invoice,
                         'menu_id'           => $menu->id,
@@ -147,6 +156,14 @@ class KasirController extends Controller
             try {
                 $invoice = 'INV-' . time();
                 foreach ($cartItems as $item) {
+                    $menu = $item->menu;
+
+                    // Validasi stok sebelum checkout QRIS (nasi selalu tersedia)
+                    $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
+                    if (!$isNasi && $menu->stok < $item->qty) {
+                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' tidak mencukupi.');
+                    }
+
                     Transaksi::create([
                         'invoice'           => $invoice,
                         'menu_id'           => $item->menu_id,

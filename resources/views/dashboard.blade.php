@@ -107,23 +107,14 @@
 </style>
 
 <!-- HEADER -->
-<div class="dashboard-header d-flex justify-content-between">
+<div class="dashboard-header d-flex justify-content-between align-items-center">
     <div>
-        <h2 class="dashboard-title">Manajer Toko</h2>
+        <h2 class="dashboard-title mb-0">Manajer Toko</h2>
         <small class="text-muted">Pantau Penjualan & Stok Real-Time</small>
     </div>
 
-    <div class="d-flex align-items-center gap-3">
-        <div class="text-danger fw-bold">
-            <i class="far fa-calendar-alt"></i> {{ date('l, d M Y') }}
-        </div>
-
-        <form method="POST" action="{{ route('logout') }}">
-            @csrf
-            <button class="btn btn-danger btn-sm">
-                Logout
-            </button>
-        </form>
+    <div class="text-danger fw-bold">
+        <i class="far fa-calendar-alt me-1"></i> {{ date('l, d M Y') }}
     </div>
 </div>
 
@@ -170,6 +161,11 @@
     <a href="{{ url('/menu') }}" class="shortcut-item flex-item">
         <div class="lingkaran-ikon"><i class="fas fa-utensils"></i></div>
         <span class="label-shortcut">Kelola Menu</span>
+    </a>
+
+    <a href="{{ route('stok.index') }}" class="shortcut-item flex-item">
+        <div class="lingkaran-ikon"><i class="fas fa-boxes"></i></div>
+        <span class="label-shortcut">Kelola Stok</span>
     </a>
 
     @if(auth()->user()->role == 'admin')

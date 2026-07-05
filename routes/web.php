@@ -68,6 +68,18 @@ Route::middleware(['auth'])->group(function () {
     // Menu (Akses Lihat)
     Route::get('/menu', [MenuController::class, 'index'])->name('menu.index');
 
+    // Manajemen Stok
+    Route::get('/stok', [StokController::class, 'index'])->name('stok.index');
+    Route::get('/menu/{id}/stok', [StokController::class, 'editMenuStok'])->name('menu.stok.edit');
+    Route::post('/menu/{id}/stok', [StokController::class, 'updateMenuStok'])->name('menu.stok.update');
+
+    // Manajemen Bahan Mentah
+    Route::get('/stok/bahan/create', [StokController::class, 'createBahan'])->name('stok.bahan.create');
+    Route::post('/stok/bahan/store', [StokController::class, 'storeBahan'])->name('stok.bahan.store');
+    Route::get('/stok/bahan/{id}/edit', [StokController::class, 'editBahan'])->name('stok.bahan.edit');
+    Route::post('/stok/bahan/{id}/update', [StokController::class, 'updateBahan'])->name('stok.bahan.update');
+    Route::delete('/stok/bahan/{id}', [StokController::class, 'destroyBahan'])->name('stok.bahan.destroy');
+
     /* 
     |--------------------------------------------------------------------------
     | FITUR KERANJANG (CART)
@@ -94,6 +106,7 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::resource('cabang', CabangController::class);
     Route::get('/user/create', [UserController::class, 'create'])->name('user.create');
     Route::post('/user/store', [UserController::class, 'store'])->name('user.store');
+    Route::delete('/user/{id}', [UserController::class, 'destroy'])->name('user.destroy');
 
     // Manajemen Menu Lengkap (Create, Edit, Delete)
     Route::resource('menu', MenuController::class)->except(['index']);

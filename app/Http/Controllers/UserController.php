@@ -12,7 +12,8 @@ class UserController extends Controller
     public function create()
     {
         $cabangs = Cabang::all();
-        return view('user.create', compact('cabangs'));
+        $users = User::where('role', 'cabang')->with('cabang')->get();
+        return view('user.create', compact('cabangs', 'users'));
     }
 
     public function store(Request $request)
@@ -36,6 +37,23 @@ class UserController extends Controller
             'cabang_id' => $request->cabang_id
         ]);
 
-        return redirect('/dashboard')->with('success', 'User cabang berhasil dibuat!');
+        return redirect()->route('user.create')->with('success', 'User cabang berhasil dibuat!');
+    }
+
+    public function destroy($id)
+    {
+        if (!Auth::check() || Auth::user()->role !== 'admin') {
+            abort(403);
+        }
+
+        $user = User::findOrFail($id);
+
+        if ($user->id === Auth::user()->id) {
+            return redirect()->back()->with('error', 'Tidak dapat menghapus diri sendiri!');
+        }
+
+        $user->delete();
+
+        return redirect()->back()->with('success', 'User cabang berhasil dihapus!');
     }
 }
