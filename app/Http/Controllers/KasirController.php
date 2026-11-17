@@ -185,31 +185,93 @@ class KasirController extends Controller
                 $timestamp = gmdate('Y-m-d\TH:i:s\Z');
                 $requestId = uniqid();
                 $user = Auth::user();
+\Log::info('APP_URL = ' . config('app.url'));
+\Log::info('CALLBACK URL = ' . url('/doku/callback'));
+\Log::info('RETURN URL = ' . url('/doku/return'));
                 $body = [
                     "order" => [
-                        "invoice_number" => $invoice, 
+                        "invoice_number" => $invoice,
                         "amount" => (int) $total,
-                        "callback_url" => url('/kasir')
+
+                        // Return user setelah pembayaran selesai
+                       "callback_url" => url('/doku/return'),
+
+                        // Endpoint webhook Laravel
+                       "notification_url" => url('/doku/callback')
                     ],
-                    "payment" => ["payment_due_date" => 60],
-                    "customer" => ["name" => $user->name, "email" => $user->email]
+
+                    "payment" => [
+                        "payment_due_date" => 60
+                    ],
+
+                    "customer" => [
+                        "name" => $user->name,
+                        "email" => $user->email
+                    ]
                 ];
                 $jsonBody = json_encode($body);
-                $digest = base64_encode(hash('sha256', $jsonBody, true));
-                $requestTarget = '/checkout/v1/payment';
-                $signature = base64_encode(hash_hmac('sha256', "Client-Id:$clientId\nRequest-Id:$requestId\nRequest-Timestamp:$timestamp\nRequest-Target:$requestTarget\nDigest:$digest", $secretKey, true));
 
-                $response = Http::withHeaders([
-                    'Client-Id' => $clientId, 'Request-Id' => $requestId, 'Request-Timestamp' => $timestamp,
-                    'Signature' => "HMACSHA256=$signature", 'Digest' => $digest, 'Content-Type' => 'application/json'
-                ])->post($baseUrl . $requestTarget, $body);
+$digest = base64_encode(
+    hash('sha256', $jsonBody, true)
+);
 
-                if ($response->failed()) return back()->with('error', 'Doku Error: ' . $response->body());
-                return redirect($response['response']['payment']['url']);
+$requestTarget = '/checkout/v1/payment';
+
+$signature = base64_encode(
+    hash_hmac(
+        'sha256',
+        "Client-Id:$clientId\n".
+        "Request-Id:$requestId\n".
+        "Request-Timestamp:$timestamp\n".
+        "Request-Target:$requestTarget\n".
+        "Digest:$digest",
+        $secretKey,
+        true
+    )
+);
+
+// DEBUG REQUEST
+\Log::info('===== DOKU REQUEST =====');
+\Log::info($jsonBody);
+
+$response = Http::withHeaders([
+    'Client-Id'         => $clientId,
+    'Request-Id'        => $requestId,
+    'Request-Timestamp' => $timestamp,
+    'Signature'         => "HMACSHA256=$signature",
+    'Digest'            => $digest,
+    'Content-Type'      => 'application/json'
+])->post(
+    $baseUrl . $requestTarget,
+    $body
+);
+
+// DEBUG RESPONSE
+\Log::info('===== DOKU RESPONSE =====');
+\Log::info($response->body());
+
+if ($response->failed()) {
+    \Log::error('===== DOKU ERROR =====');
+    \Log::error($response->body());
+
+    return back()->with(
+        'error',
+        'Doku Error: ' . $response->body()
+    );
+}
+
+return redirect(
+    $response['response']['payment']['url']
+);
             } catch (\Exception $e) {
                 DB::rollback();
                 return back()->with('error', 'QRIS Error: ' . $e->getMessage());
             }
         }
+    }
+
+    public function dokuReturn(Request $request)
+    {
+        return redirect()->route('kasir.index')->with('success', 'Pembayaran DOKU selesai.');
     }
 }

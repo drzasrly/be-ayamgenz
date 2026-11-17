@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Transaksi;
 use App\Models\Menu;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DokuController extends Controller
 {
@@ -13,87 +14,161 @@ class DokuController extends Controller
     {
         $data = $request->all();
 
-        // 🔥 LOG (WAJIB untuk debug awal)
+        // =====================================
+        // SIMPAN RAW CALLBACK
+        // =====================================
         file_put_contents(
             storage_path('logs/doku.log'),
             json_encode($data) . PHP_EOL,
             FILE_APPEND
         );
 
-        // =========================
-        // AMBIL DATA DOKU
-        // =========================
+        Log::info('===== DOKU CALLBACK MASUK =====');
+        Log::info($data);
+
+        // =====================================
+        // AMBIL DATA
+        // =====================================
         $invoice = $data['order']['invoice_number'] ?? null;
         $status  = $data['transaction']['status'] ?? null;
 
-        // =========================
+        Log::info('DOKU INVOICE: ' . $invoice);
+        Log::info('DOKU STATUS: ' . $status);
+
+        // =====================================
         // VALIDASI
-        // =========================
+        // =====================================
         if (!$invoice) {
-            return response()->json(['message' => 'no invoice']);
+            Log::warning('INVOICE KOSONG');
+
+            return response()->json([
+                'message' => 'invoice not found'
+            ], 400);
         }
 
-        // =========================
-        // CEK STATUS PEMBAYARAN
-        // =========================
-        if ($status != 'SUCCESS') {
-            return response()->json(['message' => 'not success']);
+        if (strtoupper($status) !== 'SUCCESS') {
+            Log::warning('STATUS BUKAN SUCCESS: ' . $status);
+
+            return response()->json([
+                'message' => 'payment not success'
+            ]);
         }
 
         DB::beginTransaction();
 
         try {
 
-            // 🔥 AMBIL TRANSAKSI BERDASARKAN INVOICE
+            // =====================================
+            // CARI TRANSAKSI
+            // =====================================
             $transaksis = Transaksi::where('invoice', $invoice)
                 ->where('status', 'pending')
                 ->get();
 
+            Log::info('TRANSAKSI DITEMUKAN: ' . $transaksis->count());
+
             if ($transaksis->isEmpty()) {
-                return response()->json(['message' => 'already processed']);
+
+                Log::warning(
+                    'TRANSAKSI TIDAK DITEMUKAN ATAU SUDAH DIPROSES. INVOICE: '
+                    . $invoice
+                );
+
+                DB::rollBack();
+
+                return response()->json([
+                    'message' => 'already processed'
+                ]);
             }
 
             foreach ($transaksis as $trx) {
 
+                Log::info('PROSES TRANSAKSI ID: ' . $trx->id);
+
                 $menu = Menu::find($trx->menu_id);
 
-                if (!$menu) continue;
+                if (!$menu) {
+                    Log::warning(
+                        'MENU TIDAK DITEMUKAN. MENU ID: '
+                        . $trx->menu_id
+                    );
 
-                // =========================
-                // KURANGI STOK (nasi selalu tersedia tetapi tetap dikurangi)
-                // =========================
-                $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
-                if ($isNasi || $menu->stok >= $trx->qty) {
-                    $menu->decrement('stok', $trx->qty);
+                    continue;
                 }
 
-                // =========================
+                // =====================================
+                // KURANGI STOK
+                // =====================================
+                $isNasi = stripos($menu->nama_menu, 'nasi') !== false;
+
+                if ($isNasi || $menu->stok >= $trx->qty) {
+
+                    $stokAwal = $menu->stok;
+
+                    $menu->decrement('stok', $trx->qty);
+
+                    $menu->refresh();
+
+                    Log::info(
+                        'STOK BERHASIL DIKURANGI | MENU: '
+                        . $menu->nama_menu
+                        . ' | AWAL: '
+                        . $stokAwal
+                        . ' | AKHIR: '
+                        . $menu->stok
+                    );
+                } else {
+
+                    Log::warning(
+                        'STOK TIDAK MENCUKUPI | MENU: '
+                        . $menu->nama_menu
+                    );
+                }
+
+                // =====================================
                 // UPDATE STATUS
-                // =========================
+                // =====================================
                 $trx->update([
                     'status' => 'success'
                 ]);
+
+                Log::info(
+                    'STATUS TRANSAKSI BERHASIL DIUBAH KE SUCCESS. ID: '
+                    . $trx->id
+                );
             }
 
             DB::commit();
 
-            return response()->json(['message' => 'success']);
+            Log::info(
+                'CALLBACK BERHASIL DIPROSES. INVOICE: '
+                . $invoice
+            );
 
+            return response()->json([
+                'message' => 'success'
+            ]);
         } catch (\Exception $e) {
 
-            DB::rollback();
+            DB::rollBack();
+
+            Log::error('ERROR CALLBACK DOKU');
+            Log::error($e->getMessage());
+            Log::error($e->getTraceAsString());
 
             return response()->json([
                 'error' => $e->getMessage()
-            ]);
+            ], 500);
         }
     }
 
-    public function handleNotification(Request $request) {
-        // Mencatat data yang masuk ke storage/logs/laravel.log
-        \Log::info('DOKU Notification:', $request->all());
+    public function handleNotification(Request $request)
+    {
+        Log::info('===== DOKU NOTIFICATION =====');
+        Log::info($request->all());
 
-        // Berikan respon balik ke DOKU agar mereka berhenti mengirim notifikasi
-        return response()->json(['status' => 'SUCCESS']);
+        return response()->json([
+            'status' => 'SUCCESS'
+        ]);
     }
 }

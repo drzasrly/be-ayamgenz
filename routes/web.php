@@ -8,6 +8,7 @@ use App\Http\Controllers\KasirController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ResepController;
@@ -45,6 +46,10 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthenticatedSessionController::class, 'store']);
     Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredUserController::class, 'store']);
+
+    // Fitur Lupa Password Sementara
+    Route::get('/forgot-password', [PasswordResetLinkController::class, 'create'])->name('password.request');
+    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])->name('password.email');
 });
 
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -93,6 +98,9 @@ Route::middleware(['auth'])->group(function () {
     // Fitur Tambah (+) dan Kurang (-) qty di Card Menu
     Route::get('/cart/add/{id}', [MenuController::class, 'add'])->name('cart.add');
     Route::get('/cart/decrease/{id}', [MenuController::class, 'decrease'])->name('cart.decrease');
+
+    // Doku Payment Gateway Return
+    Route::get('/doku/return', [KasirController::class, 'dokuReturn'])->name('doku.return');
 });
 
 /*
@@ -111,13 +119,8 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     // Manajemen Menu Lengkap (Create, Edit, Delete)
     Route::resource('menu', MenuController::class)->except(['index']);
 
-
-
     // Laporan Operasional
     Route::get('/laporan', [LaporanController::class, 'index'])->name('laporan.index');
     Route::get('/laporan/pdf', [LaporanController::class, 'exportPdf'])->name('laporan.pdf');
     Route::get('/laporan/excel', [LaporanController::class, 'exportExcel'])->name('laporan.excel');
-
-    // Doku Payment Gateway
-    Route::get('/doku/return', [KasirController::class, 'dokuReturn']);
 });

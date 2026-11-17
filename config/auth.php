@@ -112,4 +112,14 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Fitur Lupa Password Sementara
+    |--------------------------------------------------------------------------
+    |
+    | Dapat diaktifkan (true) atau dimatikan (false) kapan saja melalui .env
+    |
+    */
+    'enable_forgot_password' => env('ENABLE_FORGOT_PASSWORD', true),
+
 ];

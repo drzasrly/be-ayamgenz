@@ -18,8 +18,12 @@ class NewPasswordController extends Controller
     /**
      * Display the password reset view.
      */
-    public function create(Request $request): View
+    public function create(Request $request): View|RedirectResponse
     {
+        if (!config('auth.enable_forgot_password', env('ENABLE_FORGOT_PASSWORD', true))) {
+            return redirect()->route('login')->with('error', 'Fitur reset password sedang dinonaktifkan oleh administrator.');
+        }
+
         return view('auth.reset-password', ['request' => $request]);
     }
 
@@ -30,6 +34,10 @@ class NewPasswordController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        if (!config('auth.enable_forgot_password', env('ENABLE_FORGOT_PASSWORD', true))) {
+            return redirect()->route('login')->with('error', 'Fitur reset password sedang dinonaktifkan oleh administrator.');
+        }
+
         $request->validate([
             'token' => ['required'],
             'email' => ['required', 'email'],
