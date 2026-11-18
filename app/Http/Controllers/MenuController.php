@@ -52,7 +52,11 @@ class MenuController extends Controller
             $cabangId = $user->cabang_id;
         }
 
-        $gambar = $request->file('gambar') ? $request->file('gambar')->store('menu', 'public') : null;
+        $gambar = null;
+
+        if ($request->hasFile('gambar')) {
+            $gambar = $request->file('gambar')->store('menu', 'public');
+        }
 
         Menu::create([
             'nama_menu' => $request->nama_menu,
@@ -73,15 +77,17 @@ class MenuController extends Controller
         return view('menu.edit', compact('menu', 'cabangs'));
     }
 
+    
     public function update(Request $request, $id)
     {
         $user = Auth::user();
         $menu = Menu::findOrFail($id);
-        
+
         $request->validate([
             'nama_menu' => 'required|string|max:255',
-            'harga' => 'required|integer|min:0',
-            'kategori' => 'required|string',
+            'harga'     => 'required|integer|min:0',
+            'kategori'  => 'required|string',
+            'gambar'    => 'nullable|image|mimes:jpg,jpeg,png,webp|max:15360',
         ]);
 
         $menu->nama_menu = $request->nama_menu;
@@ -89,19 +95,34 @@ class MenuController extends Controller
         $menu->kategori = $request->kategori;
 
         if ($user->role == 'admin' && $request->has('cabang_id')) {
-            $menu->cabang_id = ($request->cabang_id === 'all' || empty($request->cabang_id)) ? null : $request->cabang_id;
+            $menu->cabang_id = ($request->cabang_id === 'all' || empty($request->cabang_id))
+                ? null
+                : $request->cabang_id;
         }
 
-        if ($request->file('gambar')) {
-            $file = $request->file('gambar');
-            $nama = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
-            Storage::disk('public')->putFileAs('menu', $file, $nama);
-            $menu->gambar = 'menu/' . $nama;
+        // Upload gambar baru jika dipilih
+        if ($request->hasFile('gambar')) {
+            $gambarLama = $menu->gambar;
+
+            $gambarBaru = $request->file('gambar')->store('menu', 'public');
+
+            $menu->gambar = $gambarBaru;
+
+            $menu->save();
+
+            // Hapus gambar lama setelah gambar baru berhasil disimpan
+            if ($gambarLama && Storage::disk('public')->exists($gambarLama)) {
+                Storage::disk('public')->delete($gambarLama);
+            }
+        } else {
+            // Tidak upload gambar baru, gunakan gambar lama
+            $menu->save();
         }
 
-        $menu->save();
-        return redirect()->route('menu.index')->with('success', 'Data menu berhasil diperbarui!');
+        return redirect()->route('menu.index')
+            ->with('success', 'Data menu berhasil diperbarui!');
     }
+
 
     public function destroy($id)
     {

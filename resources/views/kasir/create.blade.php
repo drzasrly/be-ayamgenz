@@ -396,8 +396,17 @@
                         @forelse($menu as $m)
                             @php
                                 $itemInCart = $cart->where('menu_id', $m->id)->first();
-                                $isNasi = stripos($m->nama_menu, 'nasi') !== false;
-                                $isOutOfStock = !$isNasi && ($m->stok <= 0);
+
+                                // Stok harus berlaku untuk SEMUA menu
+                                $stokTersedia = max(0, (int) ($m->stok ?? 0));
+
+                                // Stok kosong berarti habis, tanpa pengecualian nama menu
+                                $isOutOfStock = $stokTersedia <= 0;
+
+                                // Batas jumlah pesanan
+                                $qtyDiKeranjang = $itemInCart ? (int) $itemInCart->qty : 0;
+                                $batasStok = $qtyDiKeranjang >= $stokTersedia;
+
                                 $kategoriSlug = strtolower($m->kategori ?? 'lainnya');
                             @endphp
 
@@ -411,9 +420,15 @@
                                          loading="lazy">
                                     
                                     @if($isOutOfStock)
-                                        <span class="badge bg-secondary badge-stock">Habis</span>
-                                    @elseif(!$isNasi && $m->stok <= 5)
-                                        <span class="badge bg-warning text-dark badge-stock">Sisa {{ $m->stok }}</span>
+                                        <span class="badge bg-danger badge-stock">HABIS</span>
+                                    @elseif($stokTersedia <= 5)
+                                        <span class="badge bg-warning text-dark badge-stock">
+                                            Sisa {{ $stokTersedia }}
+                                        </span>
+                                    @else
+                                        <span class="badge bg-success badge-stock">
+                                            Stok {{ $stokTersedia }}
+                                        </span>
                                     @endif
                                 </div>
 
@@ -426,23 +441,62 @@
                                 </div>
                                 
                                 @if($isOutOfStock)
-                                    <button class="btn btn-secondary btn-sm w-100 rounded-pill fw-bold py-1" style="font-size: 11px;" disabled>
-                                        Stok Habis
+
+                                    {{-- STOK HABIS --}}
+                                    <button type="button"
+                                            class="btn btn-secondary btn-sm w-100 rounded-pill fw-bold py-1"
+                                            style="font-size: 11px;"
+                                            disabled>
+                                        <i class="fas fa-ban me-1"></i> Stok Habis
                                     </button>
+
                                 @elseif($itemInCart)
+
+                                    {{-- MENU SUDAH ADA DI KERANJANG --}}
                                     <div class="qty-control">
-                                        <a href="{{ route('cart.decrease', $m->id) }}" class="btn-qty" title="Kurangi">
+
+                                        <a href="{{ route('cart.decrease', $m->id) }}"
+                                        class="btn-qty"
+                                        title="Kurangi">
                                             <i class="fas fa-minus"></i>
                                         </a>
-                                        <span class="qty-count text-dark">{{ $itemInCart->qty }}</span>
-                                        <a href="{{ route('cart.add', $m->id) }}" class="btn-qty" title="Tambah">
-                                            <i class="fas fa-plus"></i>
-                                        </a>
+
+                                        <span class="qty-count text-dark">
+                                            {{ $itemInCart->qty }}
+                                        </span>
+
+                                        @if($batasStok)
+
+                                            {{-- JUMLAH SUDAH MENCAPAI STOK --}}
+                                            <button type="button"
+                                                    class="btn-qty"
+                                                    disabled
+                                                    title="Stok tidak mencukupi"
+                                                    style="opacity: 0.4; cursor: not-allowed;">
+                                                <i class="fas fa-plus"></i>
+                                            </button>
+
+                                        @else
+
+                                            <a href="{{ route('cart.add', $m->id) }}"
+                                            class="btn-qty"
+                                            title="Tambah">
+                                                <i class="fas fa-plus"></i>
+                                            </a>
+
+                                        @endif
+
                                     </div>
+
                                 @else
-                                    <a href="{{ route('cart.add', $m->id) }}" class="btn btn-outline-danger btn-sm w-100 rounded-pill fw-bold py-1.5" style="font-size: 12px;">
+
+                                    {{-- MENU BELUM MASUK KERANJANG --}}
+                                    <a href="{{ route('cart.add', $m->id) }}"
+                                    class="btn btn-outline-danger btn-sm w-100 rounded-pill fw-bold py-1"
+                                    style="font-size: 12px;">
                                         <i class="fas fa-plus me-1"></i> Tambah
                                     </a>
+
                                 @endif
                             </div>
                         @empty
@@ -561,9 +615,25 @@
                                     <select name="menu_id" class="form-select form-select-sm bg-light border-0 py-2" style="font-size: 12px;" required>
                                         <option value="">-- Pilih Menu --</option>
                                         @foreach($menu as $m)
-                                            <option value="{{ $m->id }}" {{ $m->stok <= 0 && stripos($m->nama_menu, 'nasi') === false ? 'disabled' : '' }}>
-                                                {{ $m->nama_menu }} - Rp {{ number_format($m->harga, 0, ',', '.') }}
+
+                                            @php
+                                                $stokMenu = max(0, (int) ($m->stok ?? 0));
+                                            @endphp
+
+                                            <option value="{{ $m->id }}"
+                                                    {{ $stokMenu <= 0 ? 'disabled' : '' }}>
+
+                                                {{ $m->nama_menu }}
+                                                - Rp {{ number_format($m->harga, 0, ',', '.') }}
+
+                                                @if($stokMenu <= 0)
+                                                    (HABIS)
+                                                @else
+                                                    (Stok: {{ $stokMenu }})
+                                                @endif
+
                                             </option>
+
                                         @endforeach
                                     </select>
                                 </div>

@@ -185,17 +185,47 @@
                     </div>
 
                     <!-- 🔥 TAMBAHAN INPUT GAMBAR -->
+                    
+                    <!-- INPUT GAMBAR -->
                     <div class="mb-3">
                         <label for="gambar" class="label-custom">Gambar Produk</label>
-                        <input type="file" 
-                               name="gambar" 
-                               id="gambar" 
-                               class="form-control form-control-custom @error('gambar') is-invalid @enderror"
-                               accept="image/*">
+
+                        <input type="file"
+                            name="gambar"
+                            id="gambar"
+                            class="form-control form-control-custom @error('gambar') is-invalid @enderror"
+                            accept=".jpg,.jpeg,.png,.webp,image/*">
 
                         @error('gambar')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
+
+                        <small class="text-muted d-block mt-2">
+                            Format JPG, JPEG, PNG, WEBP. Maksimal 2 MB.
+                        </small>
+
+                        <!-- Preview -->
+                        <div class="mt-3" id="previewContainer" style="display: none;">
+                            <p class="label-custom">Preview Gambar:</p>
+
+                            <img id="gambarPreview"
+                                src=""
+                                alt="Preview gambar menu"
+                                style="width: 150px;
+                                        height: 150px;
+                                        object-fit: cover;
+                                        border-radius: 10px;
+                                        border: 1px solid #ddd;">
+
+                            <div>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger mt-2"
+                                        id="hapusPreview">
+                                    <i class="fas fa-trash me-1"></i>
+                                    Hapus Gambar
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <hr class="text-muted opacity-25 my-4">
