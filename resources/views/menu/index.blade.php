@@ -126,7 +126,20 @@
 
             <!-- DETAIL KONTEN -->
             <div class="card-body-mini d-flex flex-column flex-grow-1">
-                <h6 class="menu-title">{{ $m->nama_menu }}</h6>
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="menu-title mb-0" style="flex: 1;">{{ $m->nama_menu }}</h6>
+                </div>
+                <div class="mb-2">
+                    @if($m->isSemuaCabang())
+                        <span class="badge bg-primary text-white" style="font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 4px;">
+                            <i class="fas fa-globe me-1"></i> Semua Cabang
+                        </span>
+                    @else
+                        <span class="badge bg-light text-secondary border" style="font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 4px;">
+                            <i class="fas fa-store me-1"></i> {{ $m->cabang->nama_cabang ?? 'Cabang Khusus' }}
+                        </span>
+                    @endif
+                </div>
                 <div class="price-tag mb-3">Rp{{ number_format($m->harga, 0, ',', '.') }}</div>
 
                 <!-- TOMBOL BELI -->

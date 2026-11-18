@@ -53,8 +53,8 @@ class TransaksiController extends Controller
             foreach ($request->items as $item) {
                 $menu = Menu::findOrFail($item['menu_id']);
                 
-                // Pastikan kasir tidak memesan menu dari cabang lain
-                if ($user->role !== 'admin' && $menu->cabang_id !== $user->cabang_id) {
+                // Pastikan kasir tidak memesan menu dari cabang lain (kecuali menu global untuk semua cabang)
+                if ($user->role !== 'admin' && $menu->cabang_id !== null && $menu->cabang_id !== $user->cabang_id) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Menu ' . $menu->nama_menu . ' bukan milik cabang Anda.'
@@ -98,18 +98,21 @@ class TransaksiController extends Controller
                 foreach ($items as $item) {
                     $menu = $item['menu'];
 
-                    // Kurangi stok menu (nasi selalu tersedia tetapi tetap dikurangi)
+                    // Kurangi stok menu cabang (nasi selalu tersedia tetapi tetap dikurangi)
                     $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
-                    if ($isNasi || $menu->stok >= $item['qty']) {
-                        $menu->decrement('stok', $item['qty']);
+                    $userCabangId = $user->cabang_id ?? $menu->cabang_id;
+                    $branchStok = $menu->getStokForCabang($userCabangId);
+
+                    if ($isNasi || $branchStok >= $item['qty']) {
+                        $menu->decrementStokCabang($userCabangId, $item['qty']);
                     } else {
-                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' tidak mencukupi.');
+                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' di cabang Anda tidak mencukupi (sisa: ' . $branchStok . ').');
                     }
 
                     Transaksi::create([
                         'invoice' => $invoice,
                         'menu_id' => $menu->id,
-                        'cabang_id' => $menu->cabang_id,
+                        'cabang_id' => $user->cabang_id ?? $menu->cabang_id,
                         'qty' => $item['qty'],
                         'total' => $menu->harga * $item['qty'],
                         'tanggal' => now(),
@@ -153,14 +156,17 @@ class TransaksiController extends Controller
 
                     // Validasi stok sebelum checkout QRIS (nasi selalu tersedia)
                     $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
-                    if (!$isNasi && $menu->stok < $item['qty']) {
-                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' tidak mencukupi.');
+                    $userCabangId = $user->cabang_id ?? $menu->cabang_id;
+                    $branchStok = $menu->getStokForCabang($userCabangId);
+
+                    if (!$isNasi && $branchStok < $item['qty']) {
+                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' di cabang Anda tidak mencukupi (sisa: ' . $branchStok . ').');
                     }
 
                     Transaksi::create([
                         'invoice' => $invoice,
                         'menu_id' => $menu->id,
-                        'cabang_id' => $menu->cabang_id,
+                        'cabang_id' => $user->cabang_id ?? $menu->cabang_id,
                         'qty' => $item['qty'],
                         'total' => $menu->harga * $item['qty'],
                         'tanggal' => now(),

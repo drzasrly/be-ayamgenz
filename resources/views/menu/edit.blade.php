@@ -116,6 +116,25 @@
                     @csrf
                     @method('PUT')
 
+                    @if(auth()->user()->role == 'admin')
+                    <div class="mb-3">
+                        <label class="label-sm">Ketersediaan Cabang</label>
+                        <select name="cabang_id" class="form-select form-select-sm form-control-sm-custom">
+                            <option value="all" {{ is_null($menu->cabang_id) ? 'selected' : '' }}>
+                                🌐 Semua Cabang (Otomatis Tersedia di Seluruh Cabang)
+                            </option>
+                            @foreach($cabangs as $cabang)
+                                <option value="{{ $cabang->id }}" {{ $menu->cabang_id == $cabang->id ? 'selected' : '' }}>
+                                    📍 Khusus Cabang: {{ $cabang->nama_cabang }}
+                                </option>
+                            @endforeach
+                        </select>
+                        <small class="text-muted d-block mt-1" style="font-size: 10px;">
+                            Pilih "Semua Cabang" agar menu ini otomatis ada di seluruh cabang lama maupun baru.
+                        </small>
+                    </div>
+                    @endif
+
                     <div class="mb-3">
                         <label class="label-sm">Nama Menu</label>
                         <input type="text" name="nama_menu" class="form-control form-control-sm-custom fw-bold" 

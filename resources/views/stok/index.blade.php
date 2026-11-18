@@ -110,22 +110,33 @@
     <div class="tab-content">
 
         @if(auth()->user()->role == 'admin')
-
-        <form method="GET" class="mb-3 d-flex gap-2">
-
-            <select name="cabang_id" class="form-select w-auto" onchange="this.form.submit()">
-                <option value="">Semua Cabang</option>
-
-                @foreach($cabangs as $c)
-                    <option value="{{ $c->id }}"
-                        {{ request('cabang_id') == $c->id ? 'selected' : '' }}>
-                        {{ $c->nama_cabang }}
-                    </option>
-                @endforeach
-            </select>
-
-        </form>
-
+        <div class="bg-white p-3 rounded-3 shadow-sm border mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold small text-muted"><i class="fas fa-store me-1 text-danger"></i> Pilih Cabang:</span>
+                <form method="GET" class="d-inline m-0">
+                    <select name="cabang_id" class="form-select form-select-sm fw-bold border-secondary" onchange="this.form.submit()">
+                        @foreach($cabangs as $c)
+                            <option value="{{ $c->id }}"
+                                {{ ($selectedCabangId == $c->id) ? 'selected' : '' }}>
+                                {{ $c->nama_cabang }}
+                            </option>
+                        @endforeach
+                    </select>
+                </form>
+            </div>
+            <small class="text-muted" style="font-size: 11px;">
+                <i class="fas fa-info-circle me-1 text-primary"></i> Menampilkan dan mengatur stok untuk cabang yang dipilih di atas.
+            </small>
+        </div>
+        @else
+        <div class="bg-white px-3 py-2 rounded-3 shadow-sm border mb-3 d-flex align-items-center gap-2">
+            <i class="fas fa-store text-danger"></i>
+            <span class="small text-muted">Cabang Anda:</span>
+            <span class="badge bg-danger text-white fw-bold">{{ auth()->user()->cabang->nama_cabang ?? 'Cabang Utama' }}</span>
+            <small class="text-muted ms-auto" style="font-size: 11px;">
+                <i class="fas fa-lock me-1"></i> Anda hanya dapat mengelola stok di cabang ini.
+            </small>
+        </div>
         @endif
 
         <!-- ================= STOK MENU ================= -->
@@ -133,17 +144,17 @@
 
             <div class="card card-inventaris shadow-sm">
 
-                <!-- HEADER CARD (FIX DI SINI) -->
+                <!-- HEADER CARD -->
                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
 
                     <h6 class="fw-bold mb-0">
                         <i class="fas fa-utensils text-danger me-2"></i>
-                        Inventory Menu
+                        Inventory Stok Menu Cabang
                     </h6>
 
                     @if(auth()->user()->role == 'admin')
                         <a href="{{ route('menu.create') }}" class="btn btn-danger btn-sm btn-action-custom">
-                            <i class="fas fa-plus me-1"></i> Tambah
+                            <i class="fas fa-plus me-1"></i> Tambah Menu Baru
                         </a>
                     @endif
 
@@ -152,27 +163,36 @@
                 <!-- TABLE -->
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover mb-0 align-middle">
                         <thead class="thead-custom">
                         <tr>
                             @if(auth()->user()->role == 'admin')
-                            <th>Cabang</th>
+                                <th>Cabang Terpilih</th>
                             @endif
                                 <th class="ps-4">Nama Menu</th>
                                 <th>Kategori</th>
-                                <th class="text-center">Sisa Stok</th>
+                                <th class="text-center">Sisa Stok di Cabang</th>
                                 <th class="text-end pe-4">Opsi</th>
                             </tr>
                         </thead>
 
                         <tbody>
                             
-                            @foreach($menus as $m)
+                            @forelse($menus as $m)
                             <tr>
                                 @if(auth()->user()->role == 'admin')
-                                <td>{{ $m->cabang->nama_cabang ?? '-' }}</td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">
+                                        {{ $cabangs->firstWhere('id', $selectedCabangId)?->nama_cabang ?? '-' }}
+                                    </span>
+                                </td>
                                 @endif
-                                <td class="ps-4 fw-bold">{{ $m->nama_menu }}</td>
+                                <td class="ps-4 fw-bold">
+                                    {{ $m->nama_menu }}
+                                    @if($m->isSemuaCabang())
+                                        <span class="badge bg-primary text-white ms-1" style="font-size: 9px;">Semua Cabang</span>
+                                    @endif
+                                </td>
 
                                 <td>
                                     <span class="badge bg-light text-danger border">
@@ -181,24 +201,34 @@
                                 </td>
 
                                 <td class="text-center">
-                                    @if($m->stok <= 5)
+                                    @if($m->stok <= 0)
+                                        <span class="badge bg-secondary badge-stok">
+                                            Habis (0)
+                                        </span>
+                                    @elseif($m->stok <= 5)
                                         <span class="badge bg-danger badge-stok">
-                                            ⚠ {{ $m->stok }}
+                                            ⚠ Sisa {{ $m->stok }}
                                         </span>
                                     @else
                                         <span class="badge bg-dark text-warning badge-stok">
-                                            {{ $m->stok }}
+                                            {{ $m->stok }} Porsi
                                         </span>
                                     @endif
                                 </td>
 
                                 <td class="text-end pe-4">
-                                    <a href="{{ route('menu.stok.edit', $m->id) }}" class="btn btn-warning btn-sm">
-                                        <i class="fas fa-plus-circle"></i> Stok
+                                    <a href="{{ route('menu.stok.edit', ['id' => $m->id, 'cabang_id' => $selectedCabangId]) }}" class="btn btn-warning btn-sm fw-bold">
+                                        <i class="fas fa-plus-circle me-1"></i> + Stok
                                     </a>
                                 </td>
                             </tr>
-                            @endforeach
+                            @empty
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">
+                                    Belum ada menu tersedia.
+                                </td>
+                            </tr>
+                            @endforelse
                         </tbody>
                     </table>
                 </div>

@@ -17,13 +17,20 @@ class MenuController extends Controller
         
         $query = Menu::with('cabang');
 
-        // Jika bukan admin, hanya bisa melihat menu dari cabangnya sendiri
+        // Jika bukan admin, melihat menu dari cabangnya sendiri + menu global (semua cabang)
         if ($user->role !== 'admin') {
-            $query->where('cabang_id', $user->cabang_id);
+            $query->where(function($q) use ($user) {
+                $q->where('cabang_id', $user->cabang_id)
+                  ->orWhereNull('cabang_id');
+            });
         } else {
             // Jika admin, opsional memfilter berdasarkan cabang_id lewat query parameter
             if ($request->has('cabang_id')) {
-                $query->where('cabang_id', $request->cabang_id);
+                $cabangId = $request->cabang_id;
+                $query->where(function($q) use ($cabangId) {
+                    $q->where('cabang_id', $cabangId)
+                      ->orWhereNull('cabang_id');
+                });
             }
         }
 
@@ -32,15 +39,17 @@ class MenuController extends Controller
             $query->where('kategori', $request->kategori);
         }
 
-        $menus = $query->get()->map(function($menu) {
+        $targetCabang = ($user->role !== 'admin') ? $user->cabang_id : ($request->cabang_id ?: $user->cabang_id);
+
+        $menus = $query->with('cabangStoks')->get()->map(function($menu) use ($targetCabang) {
             return [
                 'id' => $menu->id,
                 'nama_menu' => $menu->nama_menu,
                 'harga' => (int) $menu->harga,
                 'kategori' => $menu->kategori,
-                'stok' => (int) $menu->stok,
+                'stok' => $targetCabang ? $menu->getStokForCabang($targetCabang) : (int) $menu->stok,
                 'cabang_id' => $menu->cabang_id,
-                'cabang_name' => $menu->cabang ? $menu->cabang->nama_cabang : null,
+                'cabang_name' => $menu->cabang ? $menu->cabang->nama_cabang : 'Semua Cabang',
                 'gambar' => $menu->gambar ? url('storage/' . $menu->gambar) : null,
                 'created_at' => $menu->created_at,
                 'updated_at' => $menu->updated_at,
@@ -61,13 +70,15 @@ class MenuController extends Controller
         $user = $request->user();
         $menu = Menu::with('cabang')->findOrFail($id);
 
-        // Validasi akses cabang
-        if ($user->role !== 'admin' && $menu->cabang_id !== $user->cabang_id) {
+        // Validasi akses cabang (menu global cabang_id null bisa diakses semua cabang)
+        if ($user->role !== 'admin' && $menu->cabang_id !== null && $menu->cabang_id !== $user->cabang_id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki akses ke menu di cabang lain.'
             ], 403);
         }
+
+        $targetCabang = ($user->role !== 'admin') ? $user->cabang_id : ($request->cabang_id ?: $user->cabang_id);
 
         return response()->json([
             'success' => true,
@@ -76,9 +87,9 @@ class MenuController extends Controller
                 'nama_menu' => $menu->nama_menu,
                 'harga' => (int) $menu->harga,
                 'kategori' => $menu->kategori,
-                'stok' => (int) $menu->stok,
+                'stok' => $targetCabang ? $menu->getStokForCabang($targetCabang) : (int) $menu->stok,
                 'cabang_id' => $menu->cabang_id,
-                'cabang_name' => $menu->cabang ? $menu->cabang->nama_cabang : null,
+                'cabang_name' => $menu->cabang ? $menu->cabang->nama_cabang : 'Semua Cabang',
                 'gambar' => $menu->gambar ? url('storage/' . $menu->gambar) : null,
                 'created_at' => $menu->created_at,
                 'updated_at' => $menu->updated_at,

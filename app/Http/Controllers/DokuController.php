@@ -97,30 +97,30 @@ class DokuController extends Controller
                 }
 
                 // =====================================
-                // KURANGI STOK
+                // KURANGI STOK CABANG
                 // =====================================
                 $isNasi = stripos($menu->nama_menu, 'nasi') !== false;
+                $branchId = $trx->cabang_id ?? $menu->cabang_id;
+                $branchStok = $menu->getStokForCabang($branchId);
 
-                if ($isNasi || $menu->stok >= $trx->qty) {
+                if ($isNasi || $branchStok >= $trx->qty) {
 
-                    $stokAwal = $menu->stok;
+                    $stokAwal = $branchStok;
 
-                    $menu->decrement('stok', $trx->qty);
-
-                    $menu->refresh();
+                    $stokAkhir = $menu->decrementStokCabang($branchId, $trx->qty);
 
                     Log::info(
-                        'STOK BERHASIL DIKURANGI | MENU: '
+                        'STOK CABANG BERHASIL DIKURANGI | CABANG: ' . $branchId . ' | MENU: '
                         . $menu->nama_menu
                         . ' | AWAL: '
                         . $stokAwal
                         . ' | AKHIR: '
-                        . $menu->stok
+                        . $stokAkhir
                     );
                 } else {
 
                     Log::warning(
-                        'STOK TIDAK MENCUKUPI | MENU: '
+                        'STOK CABANG TIDAK MENCUKUPI | CABANG: ' . $branchId . ' | MENU: '
                         . $menu->nama_menu
                     );
                 }

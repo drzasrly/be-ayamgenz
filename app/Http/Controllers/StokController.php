@@ -16,23 +16,40 @@ class StokController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-
         $cabangs = Cabang::all();
 
         if ($user->role == 'admin') {
-            if ($request->cabang_id) {
-                $menus = Menu::where('cabang_id', $request->cabang_id)->with('cabang')->get();
+            $selectedCabangId = $request->cabang_id ?: ($cabangs->first()->id ?? null);
+            if ($selectedCabangId) {
+                $menus = Menu::where(function($q) use ($selectedCabangId) {
+                    $q->where('cabang_id', $selectedCabangId)
+                      ->orWhereNull('cabang_id');
+                })->with(['cabang', 'cabangStoks'])->get();
+
+                foreach ($menus as $m) {
+                    $m->stok = $m->getStokForCabang($selectedCabangId);
+                }
             } else {
-                $menus = Menu::with('cabang')->get();
+                $menus = Menu::with(['cabang', 'cabangStoks'])->get();
             }
         } else {
-            $menus = Menu::where('cabang_id', $user->cabang_id)->get();
+            $selectedCabangId = $user->cabang_id;
+            $menus = Menu::where(function($q) use ($user) {
+                $q->where('cabang_id', $user->cabang_id)
+                  ->orWhereNull('cabang_id');
+            })->with(['cabang', 'cabangStoks'])->get();
+
+            foreach ($menus as $m) {
+                $m->stok = $m->getStokForCabang($user->cabang_id);
+            }
         }
 
-        // 🔥 INI YANG KURANG
-        $bahan = Bahan::all();
+        // Bahan mentah
+        $bahan = ($user->role == 'admin')
+            ? Bahan::where('cabang_id', $selectedCabangId)->get()
+            : Bahan::where('cabang_id', $user->cabang_id)->get();
 
-        return view('stok.index', compact('menus', 'cabangs', 'bahan'));
+        return view('stok.index', compact('menus', 'cabangs', 'bahan', 'selectedCabangId'));
     }
 
     public function create()
@@ -133,27 +150,61 @@ class StokController extends Controller
     }
 
     /**
-     * Tampilkan form tambah stok menu
+     * Tampilkan form tambah stok menu untuk cabang tertentu
      */
-    public function editMenuStok($id)
+    public function editMenuStok($id, Request $request)
     {
+        $user = Auth::user();
         $menu = Menu::findOrFail($id);
-        return view('menu.stok', compact('menu'));
+        $cabangs = Cabang::all();
+
+        // Validasi akses cabang untuk staf
+        if ($user->role != 'admin' && $menu->cabang_id !== null && $menu->cabang_id != $user->cabang_id) {
+            abort(403, 'Anda tidak berhak mengatur stok menu cabang lain.');
+        }
+
+        if ($user->role == 'admin') {
+            $selectedCabangId = $request->cabang_id ?: ($cabangs->first()->id ?? null);
+        } else {
+            $selectedCabangId = $user->cabang_id;
+        }
+
+        $currentStok = $menu->getStokForCabang($selectedCabangId);
+
+        return view('menu.stok', compact('menu', 'cabangs', 'selectedCabangId', 'currentStok'));
     }
 
     /**
-     * Update/tambah stok menu
+     * Update/tambah stok menu untuk cabang tertentu
      */
     public function updateMenuStok(Request $request, $id)
     {
-        $request->validate([
-            'stok' => 'required|integer|min:1'
-        ]);
-
+        $user = Auth::user();
         $menu = Menu::findOrFail($id);
-        $menu->increment('stok', $request->stok);
 
-        return redirect()->route('stok.index')->with('success', 'Stok menu berhasil ditambahkan.');
+        if ($user->role == 'admin') {
+            $request->validate([
+                'stok' => 'required|integer|min:1',
+                'cabang_id' => 'required|exists:cabangs,id',
+            ]);
+            $cabangId = $request->cabang_id;
+        } else {
+            // Staf cabang hanya bisa mengupdate stok cabang miliknya
+            if ($menu->cabang_id !== null && $menu->cabang_id != $user->cabang_id) {
+                abort(403, 'Anda tidak berhak mengatur stok menu cabang lain.');
+            }
+
+            $request->validate([
+                'stok' => 'required|integer|min:1'
+            ]);
+            $cabangId = $user->cabang_id;
+        }
+
+        $menu->incrementStokCabang($cabangId, (int) $request->stok);
+        $namaCabang = Cabang::find($cabangId)?->nama_cabang ?? 'Cabang';
+
+        return redirect()->route('stok.index', ['cabang_id' => $cabangId])
+            ->with('success', 'Stok menu "' . $menu->nama_menu . '" untuk ' . $namaCabang . ' berhasil ditambahkan (+ ' . $request->stok . ').');
     }
 
     /**

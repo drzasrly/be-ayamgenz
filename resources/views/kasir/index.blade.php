@@ -102,42 +102,42 @@
     }
 </style>
 
-<div class="container py-4">
+<div class="container-fluid px-0 px-sm-2 px-md-3 py-2 py-md-4">
 
     <!-- HEADER -->
-    <div class="header">
+    <div class="header flex-wrap gap-2">
 
-        <div class="d-flex align-items-center gap-3">
-            <a href="{{ url('/dashboard') }}" class="btn btn-outline-secondary btn-back">
+        <div class="d-flex align-items-center gap-2 gap-sm-3">
+            <a href="{{ url('/dashboard') }}" class="btn btn-outline-secondary btn-back btn-sm py-1.5 px-2.5">
                 <i class="fas fa-arrow-left"></i>
             </a>
 
             <div>
-                <div class="title">Riwayat Transaksi</div>
+                <div class="title fs-5 fs-sm-4">Riwayat Transaksi</div>
                 <div class="subtitle">Semua transaksi hari ini</div>
             </div>
         </div>
 
-        <a href="{{ route('kasir.create') }}" class="btn btn-kfc">
-            + Transaksi
+        <a href="{{ route('kasir.create') }}" class="btn btn-kfc fw-bold shadow-sm px-3 py-2">
+            <i class="fas fa-plus me-1"></i> Transaksi
         </a>
     </div>
 
     <!-- SUMMARY -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="summary-card">
+    <div class="row g-2 g-md-3 mb-3 mb-md-4">
+        <div class="col-6 col-md-4">
+            <div class="summary-card p-3">
                 <div class="summary-title">TOTAL OMSET</div>
-                <div class="summary-value text-danger">
+                <div class="summary-value text-danger fs-6 fs-sm-5 fs-md-4">
                     Rp {{ number_format($transaksi->sum('total'), 0, ',', '.') }}
                 </div>
             </div>
         </div>
 
-        <div class="col-md-4">
-            <div class="summary-card">
+        <div class="col-6 col-md-4">
+            <div class="summary-card p-3">
                 <div class="summary-title">ITEM TERJUAL</div>
-                <div class="summary-value">
+                <div class="summary-value fs-6 fs-sm-5 fs-md-4">
                     {{ $transaksi->sum('qty') }} Produk
                 </div>
             </div>
@@ -145,8 +145,8 @@
     </div>
 
     <!-- TABLE -->
-    <div class="table-container">
-        <table class="table table-hover mb-0">
+    <div class="table-container table-responsive">
+        <table class="table table-hover mb-0 align-middle">
 
             <thead>
                 <tr>

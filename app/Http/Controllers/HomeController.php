@@ -5,25 +5,32 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Transaksi;
 use App\Models\Menu;
+use App\Models\MenuCabangStok;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 
 class HomeController extends Controller
 {
     public function index()
     {
-        // Mengambil tanggal hari ini
+        $user = Auth::user();
         $hariIni = Carbon::today();
 
-        // Menghitung data dari database
-        $totalPenjualan = Transaksi::whereDate('tanggal', $hariIni)->sum('total');
-        $totalTransaksi = Transaksi::whereDate('tanggal', $hariIni)->count();
-        $menuTerjual    = Transaksi::whereDate('tanggal', $hariIni)->sum('qty');
-        
-        // Menghitung stok menipis (asumsi kolom 'stok' ada di tabel menu)
-        // Jika belum ada kolom stok, ganti angka 0 saja agar tidak error
-        $stokMenipis    = Menu::where('stok', '<', 10)->count();
+        $trxQuery = Transaksi::whereDate('tanggal', $hariIni);
+        if ($user && $user->role !== 'admin' && $user->cabang_id) {
+            $trxQuery->where('cabang_id', $user->cabang_id);
+        }
 
-        // MENGIRIM DATA KE VIEW
+        $totalPenjualan = (clone $trxQuery)->sum('total');
+        $totalTransaksi = (clone $trxQuery)->count();
+        $menuTerjual    = (clone $trxQuery)->sum('qty');
+        
+        if ($user && $user->role !== 'admin' && $user->cabang_id) {
+            $stokMenipis = MenuCabangStok::where('cabang_id', $user->cabang_id)->where('stok', '<', 10)->count();
+        } else {
+            $stokMenipis = MenuCabangStok::where('stok', '<', 10)->count();
+        }
+
         return view('dashboard', compact(
             'totalPenjualan', 
             'totalTransaksi', 

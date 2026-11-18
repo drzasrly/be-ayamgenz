@@ -16,7 +16,7 @@
         margin: 0 auto;
     }
 
-    /* HEADER (BEDA WARNA: MERAH = TAMBAH STOK) */
+    /* HEADER */
     .card-header-stok {
         background: linear-gradient(135deg, #e4002b 0%, #b30022 100%);
         color: white;
@@ -88,7 +88,7 @@
 
         <!-- BACK -->
         <div class="mb-3">
-            <a href="{{ route('stok.index') }}" class="text-decoration-none text-muted small fw-bold">
+            <a href="{{ route('stok.index', ['cabang_id' => $selectedCabangId]) }}" class="text-decoration-none text-muted small fw-bold">
                 <i class="fas fa-arrow-left me-1"></i> Kembali ke Inventaris
             </a>
         </div>
@@ -101,7 +101,10 @@
                     <div class="bg-white bg-opacity-25 p-2 rounded-3 me-3">
                         <i class="fas fa-boxes text-white"></i>
                     </div>
-                    <h5 class="mb-0">Tambah Stok Menu</h5>
+                    <div>
+                        <h5 class="mb-0">Atur Stok Menu Cabang</h5>
+                        <small class="text-white-50" style="font-size: 11px;">Stok hanya berlaku untuk cabang terkait.</small>
+                    </div>
                 </div>
             </div>
 
@@ -110,34 +113,67 @@
                 <form action="{{ route('menu.stok.update', $menu->id) }}" method="POST">
                     @csrf
 
+                    <!-- CABANG TARGET -->
+                    @if(auth()->user()->role == 'admin')
+                        <div class="mb-3">
+                            <label class="label-custom text-primary">Cabang Tujuan</label>
+                            <select name="cabang_id" class="form-select form-control-custom fw-bold shadow-sm" required onchange="window.location.href = '{{ route('menu.stok.edit', $menu->id) }}?cabang_id=' + this.value">
+                                @foreach($cabangs as $c)
+                                    <option value="{{ $c->id }}" {{ $selectedCabangId == $c->id ? 'selected' : '' }}>
+                                        📍 {{ $c->nama_cabang }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted" style="font-size: 10px;">
+                                Mengubah pilihan cabang akan memuat sisa stok cabang tersebut.
+                            </small>
+                        </div>
+                    @else
+                        <input type="hidden" name="cabang_id" value="{{ auth()->user()->cabang_id }}">
+                        <div class="mb-3">
+                            <label class="label-custom">Cabang Anda</label>
+                            <div class="p-2.5 bg-light rounded-3 border fw-bold text-dark" style="font-size: 13px;">
+                                <i class="fas fa-store me-2 text-danger"></i> {{ auth()->user()->cabang->nama_cabang ?? 'Cabang Anda' }}
+                            </div>
+                        </div>
+                    @endif
+
                     <!-- NAMA MENU -->
                     <div class="mb-3">
                         <label class="label-custom">Nama Menu</label>
                         <input type="text" 
-                               class="form-control form-control-custom fw-bold shadow-sm" 
+                               class="form-control form-control-custom fw-bold shadow-sm bg-light" 
                                value="{{ $menu->nama_menu }}" readonly>
                     </div>
 
-                    <!-- STOK SAAT INI -->
+                    <!-- STOK SAAT INI DI CABANG INI -->
                     <div class="mb-3">
-                        <label class="label-custom">Stok Saat Ini</label>
-                        <input type="text" 
-                               class="form-control form-control-custom shadow-sm" 
-                               value="{{ $menu->stok }}" readonly>
+                        <label class="label-custom">Sisa Stok Saat Ini (Di Cabang Ini)</label>
+                        <div class="input-group">
+                            <input type="text" 
+                                   class="form-control form-control-custom shadow-sm bg-light fw-bold {{ $currentStok <= 5 ? 'text-danger' : 'text-dark' }}" 
+                                   value="{{ $currentStok }}" readonly>
+                            <span class="input-group-text bg-light border-start-0 text-muted small">Porsi / Pcs</span>
+                        </div>
                     </div>
 
                     <!-- TAMBAH STOK -->
                     <div class="mb-3">
-                        <label class="label-custom text-danger">Tambah Stok</label>
+                        <label class="label-custom text-danger">Tambah Stok (+)</label>
                         <input type="number" name="stok"
                                class="form-control form-control-custom shadow-sm @error('stok') is-invalid @enderror"
-                               min="1" required>
+                               min="1" 
+                               placeholder="Contoh: 20"
+                               required autofocus>
 
                         @error('stok')
                             <div class="text-danger mt-1" style="font-size: 11px;">
                                 {{ $message }}
                             </div>
                         @enderror
+                        <small class="text-muted mt-1 d-block" style="font-size: 11px;">
+                            Masukkan jumlah porsi yang ditambahkan ke stok cabang ini.
+                        </small>
                     </div>
 
                     <hr class="my-4 opacity-25">
@@ -145,12 +181,12 @@
                     <!-- BUTTON -->
                     <div class="d-flex justify-content-end gap-2 d-flex-mobile">
 
-                        <a href="{{ route('stok.index') }}" class="btn btn-light px-4 fw-bold text-muted border">
+                        <a href="{{ route('stok.index', ['cabang_id' => $selectedCabangId]) }}" class="btn btn-light px-4 fw-bold text-muted border">
                             Batal
                         </a>
 
                         <button type="submit" class="btn btn-submit shadow-sm">
-                            <i class="fas fa-plus-circle me-1"></i> Tambah Stok
+                            <i class="fas fa-plus-circle me-1"></i> Simpan Stok Cabang
                         </button>
 
                     </div>

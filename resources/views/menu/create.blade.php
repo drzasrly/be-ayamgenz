@@ -133,15 +133,18 @@
                     @csrf
 
                     <div class="mb-3">
-                        <label>Cabang</label>
-                        <select name="cabang_id" class="form-control" required>
-                            <option value="">-- pilih cabang --</option>
+                        <label for="cabang_id" class="label-custom">Ketersediaan Cabang</label>
+                        <select name="cabang_id" id="cabang_id" class="form-select form-control-custom shadow-sm" required>
+                            <option value="all" selected>🌐 Semua Cabang (Otomatis Tersedia di Seluruh Cabang)</option>
                             @foreach($cabangs as $cabang)
                                 <option value="{{ $cabang->id }}">
-                                    {{ $cabang->nama_cabang }}
+                                    📍 Khusus Cabang: {{ $cabang->nama_cabang }}
                                 </option>
                             @endforeach
                         </select>
+                        <small class="text-muted d-block mt-1" style="font-size: 11px;">
+                            <i class="fas fa-info-circle me-1 text-primary"></i> <strong>Semua Cabang:</strong> Menu akan otomatis tersedia di semua cabang aktif saat ini serta cabang baru yang dibuat di masa mendatang.
+                        </small>
                     </div>
                     
                     <div class="mb-3">
@@ -176,6 +179,7 @@
                                 <option value="Minuman">Minuman</option>
                                 <option value="Paket">Paket</option>
                                 <option value="Snack">Snack</option>
+                                <option value="Tambahan">Tambahan</option>
                             </select>
                         </div>
                     </div>

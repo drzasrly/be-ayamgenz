@@ -54,7 +54,7 @@
 <body>
 
     @auth
-    <div class="container-fluid pt-3 px-4">
+    <div class="container-fluid pt-2 pt-sm-3 px-2 px-sm-3 px-lg-4">
         <div class="main-wrapper">
             <div class="d-flex flex-wrap justify-content-between align-items-center bg-white px-3 py-2 rounded-4 shadow-sm border border-light gap-2" style="font-size: 13px;">
                 <div class="d-flex align-items-center flex-wrap gap-2">
@@ -62,23 +62,23 @@
                         <i class="fas fa-drumstick-bite me-1"></i> FnB Chicken
                     </a>
                     <span class="text-muted d-none d-sm-inline">|</span>
-                    <span class="text-secondary">
-                        Masuk sebagai: <strong class="text-dark text-capitalize">{{ auth()->user()->name }}</strong> 
-                        <span class="badge bg-danger text-white text-uppercase ms-1" style="font-size: 9px; font-weight: 700; border-radius: 4px; padding: 3px 6px;">{{ auth()->user()->role }}</span>
+                    <span class="text-secondary small">
+                        <strong class="text-dark text-capitalize">{{ auth()->user()->name }}</strong> 
+                        <span class="badge bg-danger text-white text-uppercase ms-1" style="font-size: 9px; font-weight: 700; border-radius: 4px; padding: 2px 5px;">{{ auth()->user()->role }}</span>
                         @if(auth()->user()->cabang)
                             <span class="text-muted d-none d-md-inline">|</span> 
-                            <span class="text-muted">Cabang: <strong class="text-dark">{{ auth()->user()->cabang->nama_cabang }}</strong></span>
+                            <span class="text-muted d-none d-sm-inline">Cabang: <strong class="text-dark">{{ auth()->user()->cabang->nama_cabang }}</strong></span>
                         @endif
                     </span>
                 </div>
-                <div class="d-flex align-items-center gap-2">
-                    <a href="{{ route('profile.edit') }}" class="btn btn-sm btn-light text-secondary rounded-pill px-3 py-1 fw-bold border" style="font-size: 11px; background-color: #f8f9fa;">
-                        <i class="fas fa-user-cog me-1 text-danger"></i> Edit Profil
+                <div class="d-flex align-items-center gap-1 gap-sm-2 ms-auto">
+                    <a href="{{ route('profile.edit') }}" class="btn btn-sm btn-light text-secondary rounded-pill px-2 px-sm-3 py-1 fw-bold border" style="font-size: 11px; background-color: #f8f9fa;">
+                        <i class="fas fa-user-cog text-danger"></i> <span class="d-none d-sm-inline ms-1">Edit Profil</span>
                     </a>
                     <form method="POST" action="{{ route('logout') }}" class="m-0">
                         @csrf
-                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3 py-1 fw-bold" style="font-size: 11px;">
-                            <i class="fas fa-sign-out-alt me-1"></i> Keluar
+                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-2 px-sm-3 py-1 fw-bold" style="font-size: 11px;">
+                            <i class="fas fa-sign-out-alt"></i> <span class="d-none d-sm-inline ms-1">Keluar</span>
                         </button>
                     </form>
                 </div>
@@ -87,7 +87,7 @@
     </div>
     @endauth
 
-    <div class="container-fluid mt-3 px-4">
+    <div class="container-fluid mt-2 mt-sm-3 px-2 px-sm-3 px-lg-4 mb-5">
         <div class="main-wrapper">
             @yield('content')
         </div>

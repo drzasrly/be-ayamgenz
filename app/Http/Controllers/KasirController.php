@@ -26,62 +26,106 @@ class KasirController extends Controller
         return view('kasir.index', compact('transaksi'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $user = Auth::user();
-        
+        $cabang = Cabang::all();
+
         if ($user->role == 'admin') {
-            $menu = Menu::all();
+            if ($request->has('cabang_id')) {
+                session(['active_pos_cabang_id' => $request->cabang_id]);
+            }
+            $targetCabang = session('active_pos_cabang_id') ?: ($user->cabang_id ?: $cabang->first()?->id);
+            $menu = Menu::where(function($q) use ($targetCabang) {
+                $q->where('cabang_id', $targetCabang)
+                  ->orWhereNull('cabang_id');
+            })->with(['cabang', 'cabangStoks'])->get();
         } else {
-            $menu = Menu::where('cabang_id', $user->cabang_id)->get();
+            $targetCabang = $user->cabang_id;
+            $menu = Menu::where(function($q) use ($user) {
+                $q->where('cabang_id', $user->cabang_id)
+                  ->orWhereNull('cabang_id');
+            })->with(['cabang', 'cabangStoks'])->get();
         }
 
-        $cabang = Cabang::all();
+        // Tampilkan stok sesuai cabang yang aktif/sedang membuka kasir
+        if ($targetCabang) {
+            foreach ($menu as $m) {
+                $m->stok = $m->getStokForCabang($targetCabang);
+            }
+        }
+
         $cart = Cart::with('menu')->where('user_id', Auth::id())->get();
         $totalCart = $cart->sum(fn($i) => ($i->menu->harga ?? 0) * $i->qty);
 
-        return view('kasir.create', compact('menu', 'cabang', 'cart', 'totalCart'));
+        return view('kasir.create', compact('menu', 'cabang', 'cart', 'totalCart', 'targetCabang'));
     }
 
     public function store(Request $request)
-{
-    $request->validate([
-        'menu_id' => 'required|exists:menu,id',
-        'qty' => 'required|integer|min:1',
-    ]);
-
-    $user = Auth::user();
-    $menu = Menu::findOrFail($request->menu_id);
-
-    $cart = Cart::where('user_id', $user->id)
-                ->where('menu_id', $request->menu_id)
-                ->first();
-
-    if ($cart) {
-        $cart->increment('qty', $request->qty);
-    } else {
-        Cart::create([
-            'user_id'   => $user->id,
-            'menu_id'   => $request->menu_id,
-            'qty'       => $request->qty,
-            'cabang_id' => $menu->cabang_id 
+    {
+        $request->validate([
+            'menu_id' => 'required|exists:menu,id',
+            'qty' => 'required|integer|min:1',
         ]);
+
+        $user = Auth::user();
+        $menu = Menu::findOrFail($request->menu_id);
+
+        $cabangId = ($user->role == 'admin') 
+            ? (session('active_pos_cabang_id') ?: ($user->cabang_id ?: Cabang::first()?->id)) 
+            : $user->cabang_id;
+
+        $stokTersedia = $menu->getStokForCabang($cabangId);
+
+        // Validasi jika stok cabang kosong
+        if ($stokTersedia <= 0) {
+            return back()->with('error', 'Stok untuk menu "' . $menu->nama_menu . '" di cabang ini sedang kosong (0).');
+        }
+
+        $cart = Cart::where('user_id', $user->id)
+                    ->where('menu_id', $request->menu_id)
+                    ->first();
+
+        $currentQty = $cart ? $cart->qty : 0;
+        if (($currentQty + $request->qty) > $stokTersedia) {
+            return back()->with('error', 'Jumlah pesanan melebihi sisa stok yang tersedia (' . $stokTersedia . ').');
+        }
+
+        if ($cart) {
+            $cart->increment('qty', $request->qty);
+        } else {
+            Cart::create([
+                'user_id'   => $user->id,
+                'menu_id'   => $request->menu_id,
+                'qty'       => $request->qty,
+                'cabang_id' => $cabangId 
+            ]);
+        }
+
+        return back();
     }
-
-    // Return tanpa pesan success agar tidak muncul pop-up, sesuai permintaan Anda sebelumnya
-    return back();
-}
-
-
-
-
 
     public function addToCart($id)
     {
         $user = Auth::user();
         $menu = Menu::findOrFail($id);
 
+        $cabangId = ($user->role == 'admin') 
+            ? (session('active_pos_cabang_id') ?: ($user->cabang_id ?: Cabang::first()?->id)) 
+            : $user->cabang_id;
+
+        $stokTersedia = $menu->getStokForCabang($cabangId);
+
+        if ($stokTersedia <= 0) {
+            return back()->with('error', 'Stok menu "' . $menu->nama_menu . '" di cabang ini sedang kosong (0).');
+        }
+
         $cart = Cart::where('user_id', $user->id)->where('menu_id', $id)->first();
+        $currentQty = $cart ? $cart->qty : 0;
+
+        if ($currentQty >= $stokTersedia) {
+            return back()->with('error', 'Jumlah pesanan sudah mencapai batas maksimal stok yang tersedia (' . $stokTersedia . ').');
+        }
 
         if ($cart) {
             $cart->increment('qty');
@@ -90,11 +134,11 @@ class KasirController extends Controller
                 'user_id'   => $user->id,
                 'menu_id'   => $id,
                 'qty'       => 1,
-                'cabang_id' => $menu->cabang_id 
+                'cabang_id' => $cabangId 
             ]);
         }
 
-        return back(); // Notifikasi success dihapus
+        return back();
     }
 
     public function removeCart($id)
@@ -123,18 +167,20 @@ class KasirController extends Controller
                 foreach ($cartItems as $item) {
                     $menu = $item->menu;
 
-                    // Kurangi stok menu (nasi selalu tersedia tetapi tetap dikurangi)
-                    $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
-                    if ($isNasi || $menu->stok >= $item->qty) {
-                        $menu->decrement('stok', $item->qty);
+                    $userCabangId = $user->cabang_id ?? $menu->cabang_id;
+                    $branchStok = $menu->getStokForCabang($userCabangId);
+
+                    // Kurangi stok menu cabang
+                    if ($branchStok >= $item->qty) {
+                        $menu->decrementStokCabang($userCabangId, $item->qty);
                     } else {
-                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' tidak mencukupi.');
+                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' di cabang Anda tidak mencukupi (sisa: ' . $branchStok . ').');
                     }
 
                     Transaksi::create([
                         'invoice'           => $invoice,
                         'menu_id'           => $menu->id,
-                        'cabang_id'         => $menu->cabang_id,
+                        'cabang_id'         => $user->cabang_id ?? $menu->cabang_id,
                         'qty'               => $item->qty,
                         'total'             => $menu->harga * $item->qty,
                         'tanggal'           => now(),
@@ -158,16 +204,18 @@ class KasirController extends Controller
                 foreach ($cartItems as $item) {
                     $menu = $item->menu;
 
-                    // Validasi stok sebelum checkout QRIS (nasi selalu tersedia)
-                    $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
-                    if (!$isNasi && $menu->stok < $item->qty) {
-                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' tidak mencukupi.');
+                    $userCabangId = $user->cabang_id ?? $item->menu->cabang_id;
+                    $branchStok = $menu->getStokForCabang($userCabangId);
+
+                    // Validasi stok sebelum checkout QRIS
+                    if ($branchStok < $item->qty) {
+                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' di cabang Anda tidak mencukupi (sisa: ' . $branchStok . ').');
                     }
 
                     Transaksi::create([
                         'invoice'           => $invoice,
                         'menu_id'           => $item->menu_id,
-                        'cabang_id'         => $item->menu->cabang_id,
+                        'cabang_id'         => $user->cabang_id ?? $item->menu->cabang_id,
                         'qty'               => $item->qty,
                         'total'             => $item->menu->harga * $item->qty,
                         'tanggal'           => now(),
