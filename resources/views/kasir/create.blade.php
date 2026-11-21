@@ -395,7 +395,10 @@
                     <div class="menu-grid" id="menuGridContainer">
                         @forelse($menu as $m)
                             @php
-                                $itemInCart = $cart->where('menu_id', $m->id)->first();
+                                $itemInCart = $cart
+                                    ->where('menu_id', $m->id)
+                                    ->where('cabang_id', $targetCabang)
+                                    ->first();
 
                                 // Stok harus berlaku untuk SEMUA menu
                                 $stokTersedia = max(0, (int) ($m->stok ?? 0));
@@ -455,11 +458,14 @@
                                     {{-- MENU SUDAH ADA DI KERANJANG --}}
                                     <div class="qty-control">
 
-                                        <a href="{{ route('cart.decrease', $m->id) }}"
-                                        class="btn-qty"
-                                        title="Kurangi">
-                                            <i class="fas fa-minus"></i>
-                                        </a>
+                                        <form action="{{ route('cart.decrease', $m->id) }}"
+                                            method="POST"
+                                            class="m-0">
+                                            @csrf
+                                            <button type="submit" class="btn-qty" title="Kurangi">
+                                                <i class="fas fa-minus"></i>
+                                            </button>
+                                        </form>
 
                                         <span class="qty-count text-dark">
                                             {{ $itemInCart->qty }}
@@ -478,11 +484,14 @@
 
                                         @else
 
-                                            <a href="{{ route('cart.add', $m->id) }}"
-                                            class="btn-qty"
-                                            title="Tambah">
-                                                <i class="fas fa-plus"></i>
-                                            </a>
+                                            <form action="{{ route('cart.add', $m->id) }}"
+                                                method="POST"
+                                                class="m-0">
+                                                @csrf
+                                                <button type="submit" class="btn-qty" title="Tambah">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                            </form>
 
                                         @endif
 
@@ -491,11 +500,14 @@
                                 @else
 
                                     {{-- MENU BELUM MASUK KERANJANG --}}
-                                    <a href="{{ route('cart.add', $m->id) }}"
-                                    class="btn btn-outline-danger btn-sm w-100 rounded-pill fw-bold py-1"
-                                    style="font-size: 12px;">
-                                        <i class="fas fa-plus me-1"></i> Tambah
-                                    </a>
+                                    <form action="{{ route('cart.add', $m->id) }}" method="POST">
+                                        @csrf
+                                        <button type="submit"
+                                                class="btn btn-outline-danger btn-sm w-100 rounded-pill fw-bold py-1"
+                                                style="font-size: 12px;">
+                                            <i class="fas fa-plus me-1"></i> Tambah
+                                        </button>
+                                    </form>
 
                                 @endif
                             </div>
@@ -553,12 +565,16 @@
                                         <div class="fw-bold text-danger" style="font-size: 13px;">
                                             Rp {{ number_format($subtotal, 0, ',', '.') }}
                                         </div>
-                                        <a href="{{ route('cart.remove', $item->id) }}" 
-                                           class="btn btn-sm btn-light text-danger rounded-circle p-1" 
-                                           style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;"
-                                           title="Hapus Item">
-                                            <i class="fas fa-trash-alt" style="font-size: 11px;"></i>
-                                        </a>
+                                        <form action="{{ route('cart.remove', $item->id) }}"
+                                            method="POST"
+                                            class="m-0">
+                                            @csrf
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-light text-danger rounded-circle p-1"
+                                                    style="width: 28px; height: 28px;">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             @empty

@@ -133,42 +133,76 @@ class MenuController extends Controller
     /**
      * 🔥 FUNGSI TAMBAH (+) SINKRON DENGAN ID MENU DAN VALIDASI STOK CABANG
      */
+    
     public function add($id)
     {
         $user = Auth::user();
         $menu = Menu::findOrFail($id);
 
-        $cabangId = ($user->role == 'admin') 
-            ? (session('active_pos_cabang_id') ?: ($user->cabang_id ?: Cabang::first()?->id)) 
+        // Tentukan cabang POS yang aktif
+        $cabangId = $user->role === 'admin'
+            ? (session('active_pos_cabang_id')
+                ?: ($user->cabang_id ?: Cabang::first()?->id))
             : $user->cabang_id;
+
+        if (!$cabangId) {
+            return back()->with('error', 'Cabang POS belum dipilih.');
+        }
+
+        // Pastikan menu merupakan menu global atau milik cabang aktif
+        if ($menu->cabang_id !== null &&
+            (int) $menu->cabang_id !== (int) $cabangId) {
+            return back()->with('error', 'Menu tidak tersedia di cabang ini.');
+        }
 
         $stokTersedia = $menu->getStokForCabang($cabangId);
 
-        // Validasi ketersediaan stok
         if ($stokTersedia <= 0) {
-            return redirect()->back()->with('error', 'Stok untuk menu "' . $menu->nama_menu . '" di cabang ini sedang kosong (0).');
+            return back()->with('error',
+                'Stok menu "' . $menu->nama_menu . '" sedang kosong.');
         }
 
-        $cartItem = Cart::where('user_id', $user->id)->where('menu_id', $id)->first();
-        $currentCartQty = $cartItem ? $cartItem->qty : 0;
+        // // Jangan mencampur keranjang dari cabang berbeda
+        // $keranjangLama = Cart::where('user_id', $user->id)->get();
 
-        if ($currentCartQty >= $stokTersedia) {
-            return redirect()->back()->with('error', 'Jumlah pesanan "' . $menu->nama_menu . '" sudah mencapai batas maksimal stok yang tersedia (' . $stokTersedia . ').');
+        // foreach ($keranjangLama as $item) {
+        //     if (
+        //         $item->cabang_id === null ||
+        //         (int) $item->cabang_id !== (int) $cabangId
+        //     ) {
+        //         return back()->with(
+        //             'error',
+        //             'Keranjang masih berisi pesanan dari cabang lain. Kosongkan keranjang terlebih dahulu.'
+        //         );
+        //     }
+        // }
+
+        $cartItem = Cart::where('user_id', $user->id)
+            ->where('menu_id', $id)
+            ->where('cabang_id', $cabangId)
+            ->first();
+
+        $currentQty = $cartItem ? $cartItem->qty : 0;
+
+        if ($currentQty >= $stokTersedia) {
+            return back()->with('error',
+                'Jumlah pesanan sudah mencapai batas stok (' . $stokTersedia . ').');
         }
 
         if ($cartItem) {
             $cartItem->increment('qty');
         } else {
             Cart::create([
-                'user_id'   => $user->id,
-                'menu_id'   => $id,
-                'qty'       => 1,
-                'cabang_id' => $cabangId
+                'user_id' => $user->id,
+                'menu_id' => $id,
+                'cabang_id' => $cabangId,
+                'qty' => 1,
             ]);
         }
 
-        return redirect()->back();
+        return back();
     }
+
 
     /**
      * 🔥 FUNGSI KURANG (-) SINKRON DENGAN ID MENU
@@ -176,17 +210,30 @@ class MenuController extends Controller
     public function decrease($id)
     {
         $user = Auth::user();
-        $cartItem = Cart::where('user_id', $user->id)->where('menu_id', $id)->first();
 
-        if ($cartItem) {
-            if ($cartItem->qty > 1) {
-                $cartItem->decrement('qty');
-            } else {
-                $cartItem->delete();
-            }
-            return redirect()->back();
+        $cabangId = $user->role === 'admin'
+            ? (session('active_pos_cabang_id')
+                ?: ($user->cabang_id ?: Cabang::first()?->id))
+            : $user->cabang_id;
+
+        $cartItem = Cart::where('user_id', $user->id)
+            ->where('menu_id', $id)
+            ->where('cabang_id', $cabangId)
+            ->first();
+
+        if (!$cartItem) {
+            return back()->with(
+                'error',
+                'Item tidak ditemukan di keranjang cabang ini.'
+            );
         }
 
-        return redirect()->back()->with('error', 'Item tidak ditemukan di keranjang');
+        if ($cartItem->qty > 1) {
+            $cartItem->decrement('qty');
+        } else {
+            $cartItem->delete();
+        }
+
+        return back();
     }
 }

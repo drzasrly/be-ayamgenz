@@ -96,9 +96,15 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/checkout', [KasirController::class, 'checkout'])->name('checkout');
 
     // Fitur Tambah (+) dan Kurang (-) qty di Card Menu
-    Route::get('/cart/add/{id}', [MenuController::class, 'add'])->name('cart.add');
-    Route::get('/cart/decrease/{id}', [MenuController::class, 'decrease'])->name('cart.decrease');
+   Route::post('/cart/add/{id}', [MenuController::class, 'add'])
+        ->name('cart.add');
 
+    Route::post('/cart/decrease/{id}', [MenuController::class, 'decrease'])
+        ->name('cart.decrease');
+
+    Route::post('/cart/remove/{id}', [KasirController::class, 'removeCart'])
+        ->name('cart.remove');
+        
     // Doku Payment Gateway Return
     Route::get('/doku/return', [KasirController::class, 'dokuReturn'])->name('doku.return');
 });

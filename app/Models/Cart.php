@@ -11,18 +11,22 @@ class Cart extends Model
     protected $fillable = [
         'user_id',
         'menu_id',
-        'qty'
+        'qty',
+        'cabang_id',
     ];
 
-    // Relasi ke Menu
     public function menu()
     {
         return $this->belongsTo(Menu::class, 'menu_id');
     }
 
-    // Relasi ke User
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function cabang()
+    {
+        return $this->belongsTo(Cabang::class, 'cabang_id');
     }
 }

@@ -7,168 +7,95 @@ use App\Models\Transaksi;
 use App\Models\Menu;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Models\MenuCabangStok;
 
 class DokuController extends Controller
 {
-    public function callback(Request $request)
-    {
-        $data = $request->all();
+    
+public function callback(Request $request)
+{
+    $data = $request->all();
 
-        // =====================================
-        // SIMPAN RAW CALLBACK
-        // =====================================
-        file_put_contents(
-            storage_path('logs/doku.log'),
-            json_encode($data) . PHP_EOL,
-            FILE_APPEND
-        );
+    Log::info('===== DOKU CALLBACK MASUK =====', $data);
 
-        Log::info('===== DOKU CALLBACK MASUK =====');
-        Log::info($data);
+    $invoice = $data['order']['invoice_number'] ?? null;
+    $status = $data['transaction']['status'] ?? null;
 
-        // =====================================
-        // AMBIL DATA
-        // =====================================
-        $invoice = $data['order']['invoice_number'] ?? null;
-        $status  = $data['transaction']['status'] ?? null;
+    if (!$invoice) {
+        return response()->json([
+            'message' => 'invoice not found'
+        ], 400);
+    }
 
-        Log::info('DOKU INVOICE: ' . $invoice);
-        Log::info('DOKU STATUS: ' . $status);
+    if (strtoupper((string) $status) !== 'SUCCESS') {
+        return response()->json([
+            'message' => 'payment not success'
+        ]);
+    }
 
-        // =====================================
-        // VALIDASI
-        // =====================================
-        if (!$invoice) {
-            Log::warning('INVOICE KOSONG');
+    try {
+        DB::transaction(function () use ($invoice) {
 
-            return response()->json([
-                'message' => 'invoice not found'
-            ], 400);
-        }
-
-        if (strtoupper($status) !== 'SUCCESS') {
-            Log::warning('STATUS BUKAN SUCCESS: ' . $status);
-
-            return response()->json([
-                'message' => 'payment not success'
-            ]);
-        }
-
-        DB::beginTransaction();
-
-        try {
-
-            // =====================================
-            // CARI TRANSAKSI
-            // =====================================
             $transaksis = Transaksi::where('invoice', $invoice)
                 ->where('status', 'pending')
+                ->lockForUpdate()
                 ->get();
 
-            Log::info('TRANSAKSI DITEMUKAN: ' . $transaksis->count());
-
             if ($transaksis->isEmpty()) {
-
-                Log::warning(
-                    'TRANSAKSI TIDAK DITEMUKAN ATAU SUDAH DIPROSES. INVOICE: '
-                    . $invoice
-                );
-
-                DB::rollBack();
-
-                return response()->json([
-                    'message' => 'already processed'
-                ]);
+                Log::info('Callback sudah diproses: ' . $invoice);
+                return;
             }
 
             foreach ($transaksis as $trx) {
 
-                Log::info('PROSES TRANSAKSI ID: ' . $trx->id);
-
-                $menu = Menu::find($trx->menu_id);
-
-                if (!$menu) {
-                    Log::warning(
-                        'MENU TIDAK DITEMUKAN. MENU ID: '
-                        . $trx->menu_id
-                    );
-
-                    continue;
-                }
-
-                // =====================================
-                // KURANGI STOK CABANG
-                // =====================================
-                $isNasi = stripos($menu->nama_menu, 'nasi') !== false;
-                $branchId = $trx->cabang_id ?? $menu->cabang_id;
-                $branchStok = $menu->getStokForCabang($branchId);
-
-                if ($isNasi || $branchStok >= $trx->qty) {
-
-                    $stokAwal = $branchStok;
-
-                    $stokAkhir = $menu->decrementStokCabang($branchId, $trx->qty);
-
-                    Log::info(
-                        'STOK CABANG BERHASIL DIKURANGI | CABANG: ' . $branchId . ' | MENU: '
-                        . $menu->nama_menu
-                        . ' | AWAL: '
-                        . $stokAwal
-                        . ' | AKHIR: '
-                        . $stokAkhir
-                    );
-                } else {
-
-                    Log::warning(
-                        'STOK CABANG TIDAK MENCUKUPI | CABANG: ' . $branchId . ' | MENU: '
-                        . $menu->nama_menu
+                if (!$trx->cabang_id) {
+                    throw new \Exception(
+                        'Cabang transaksi tidak ditemukan. ID transaksi: ' . $trx->id
                     );
                 }
 
-                // =====================================
-                // UPDATE STATUS
-                // =====================================
+                $menu = Menu::findOrFail($trx->menu_id);
+
+                $stok = MenuCabangStok::where('menu_id', $menu->id)
+                    ->where('cabang_id', $trx->cabang_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$stok || $stok->stok < $trx->qty) {
+                    throw new \Exception(
+                        'Stok ' . $menu->nama_menu .
+                        ' tidak mencukupi saat callback. Stok tersedia: ' .
+                        ($stok->stok ?? 0)
+                    );
+                }
+
+                $stok->decrement('stok', $trx->qty);
+
                 $trx->update([
                     'status' => 'success'
                 ]);
 
                 Log::info(
-                    'STATUS TRANSAKSI BERHASIL DIUBAH KE SUCCESS. ID: '
-                    . $trx->id
+                    'Stok QRIS dikurangi | Invoice: ' . $invoice .
+                    ' | Menu: ' . $menu->nama_menu .
+                    ' | Cabang: ' . $trx->cabang_id .
+                    ' | Qty: ' . $trx->qty
                 );
             }
-
-            DB::commit();
-
-            Log::info(
-                'CALLBACK BERHASIL DIPROSES. INVOICE: '
-                . $invoice
-            );
-
-            return response()->json([
-                'message' => 'success'
-            ]);
-        } catch (\Exception $e) {
-
-            DB::rollBack();
-
-            Log::error('ERROR CALLBACK DOKU');
-            Log::error($e->getMessage());
-            Log::error($e->getTraceAsString());
-
-            return response()->json([
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    public function handleNotification(Request $request)
-    {
-        Log::info('===== DOKU NOTIFICATION =====');
-        Log::info($request->all());
+        });
 
         return response()->json([
-            'status' => 'SUCCESS'
+            'message' => 'success'
         ]);
+
+    } catch (\Exception $e) {
+
+        Log::error('ERROR CALLBACK DOKU: ' . $e->getMessage());
+
+        return response()->json([
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
+
 }

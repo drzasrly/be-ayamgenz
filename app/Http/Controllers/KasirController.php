@@ -10,6 +10,7 @@ use App\Models\Cart;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
+use App\Models\MenuCabangStok;
 
 class KasirController extends Controller
 {
@@ -55,7 +56,10 @@ class KasirController extends Controller
             }
         }
 
-        $cart = Cart::with('menu')->where('user_id', Auth::id())->get();
+        $cart = Cart::with('menu')
+            ->where('user_id', Auth::id())
+            ->where('cabang_id', $targetCabang)
+            ->get();
         $totalCart = $cart->sum(fn($i) => ($i->menu->harga ?? 0) * $i->qty);
 
         return view('kasir.create', compact('menu', 'cabang', 'cart', 'totalCart', 'targetCabang'));
@@ -83,8 +87,9 @@ class KasirController extends Controller
         }
 
         $cart = Cart::where('user_id', $user->id)
-                    ->where('menu_id', $request->menu_id)
-                    ->first();
+            ->where('menu_id', $request->menu_id)
+            ->where('cabang_id', $cabangId)
+            ->first();
 
         $currentQty = $cart ? $cart->qty : 0;
         if (($currentQty + $request->qty) > $stokTersedia) {
@@ -120,7 +125,10 @@ class KasirController extends Controller
             return back()->with('error', 'Stok menu "' . $menu->nama_menu . '" di cabang ini sedang kosong (0).');
         }
 
-        $cart = Cart::where('user_id', $user->id)->where('menu_id', $id)->first();
+        $cart = Cart::where('user_id', $user->id)
+            ->where('menu_id', $id)
+            ->where('cabang_id', $cabangId)
+            ->first();
         $currentQty = $cart ? $cart->qty : 0;
 
         if ($currentQty >= $stokTersedia) {
@@ -149,83 +157,124 @@ class KasirController extends Controller
 
     public function checkout(Request $request)
     {
-        $request->validate(['metode_pembayaran' => 'required|in:cash,qris']);
-        $user_id = Auth::id();
-        $cartItems = Cart::with('menu')->where('user_id', $user_id)->get();
+        $request->validate([
+            'metode_pembayaran' => 'required|in:cash,qris'
+        ]);
+
+        $user = Auth::user();
+        $user_id = $user->id;
+
+        $cartItems = Cart::with('menu')
+            ->where('user_id', $user_id)
+            ->get();
 
         if ($cartItems->isEmpty()) {
-            return back()->with('error', 'Keranjang kosong');
+            return back()->with('error', 'Keranjang kosong.');
         }
 
         $cartItems = $cartItems->filter(fn($item) => $item->menu !== null);
-        $total = $cartItems->sum(fn($i) => ($i->menu->harga ?? 0) * $i->qty);
 
-        if ($request->metode_pembayaran == 'cash') {
-            DB::beginTransaction();
+        if ($cartItems->isEmpty()) {
+            return back()->with('error', 'Menu dalam keranjang tidak ditemukan.');
+        }
+
+        foreach ($cartItems as $item) {
+            if (!$item->cabang_id) {
+                return back()->with(
+                    'error',
+                    'Ada pesanan lama yang belum memiliki cabang. Kosongkan keranjang dan masukkan ulang menu.'
+                );
+            }
+        }
+
+        $cabangBerbeda = $cartItems->pluck('cabang_id')->unique()->count() > 1;
+
+        if ($cabangBerbeda) {
+            return back()->with('error', 'Keranjang tidak boleh mencampur cabang.');
+        }
+
+        $total = $cartItems->sum(
+            fn($item) => $item->menu->harga * $item->qty
+        );
+
+        $invoice = 'INV-' . strtoupper(uniqid());
+
+            if ($request->metode_pembayaran === 'cash') {
             try {
-                $invoice = 'INV-' . time();
-                foreach ($cartItems as $item) {
-                    $menu = $item->menu;
+                DB::transaction(function () use ($cartItems, $user_id, $invoice) {
 
-                    $userCabangId = $user->cabang_id ?? $menu->cabang_id;
-                    $branchStok = $menu->getStokForCabang($userCabangId);
+                    foreach ($cartItems as $item) {
+                        $menu = $item->menu;
+                        $cabangId = $item->cabang_id;
 
-                    // Kurangi stok menu cabang
-                    if ($branchStok >= $item->qty) {
-                        $menu->decrementStokCabang($userCabangId, $item->qty);
-                    } else {
-                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' di cabang Anda tidak mencukupi (sisa: ' . $branchStok . ').');
+                        // Kunci baris stok agar tidak terjadi pengurangan bersamaan
+                        $stok = MenuCabangStok::where('menu_id', $menu->id)
+                            ->where('cabang_id', $cabangId)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if (!$stok || $stok->stok < $item->qty) {
+                            throw new \Exception(
+                                'Stok ' . $menu->nama_menu .
+                                ' tidak mencukupi. Stok tersedia: ' .
+                                ($stok->stok ?? 0)
+                            );
+                        }
+
+                        $stok->decrement('stok', $item->qty);
+
+                        Transaksi::create([
+                            'invoice' => $invoice,
+                            'menu_id' => $menu->id,
+                            'cabang_id' => $cabangId,
+                            'qty' => $item->qty,
+                            'total' => $menu->harga * $item->qty,
+                            'tanggal' => now()->toDateString(),
+                            'metode_pembayaran' => 'cash',
+                            'status' => 'success',
+                        ]);
                     }
 
-                    Transaksi::create([
-                        'invoice'           => $invoice,
-                        'menu_id'           => $menu->id,
-                        'cabang_id'         => $user->cabang_id ?? $menu->cabang_id,
-                        'qty'               => $item->qty,
-                        'total'             => $menu->harga * $item->qty,
-                        'tanggal'           => now(),
-                        'metode_pembayaran' => 'cash',
-                        'status'            => 'success'
-                    ]);
-                }
-                Cart::where('user_id', $user_id)->delete();
-                DB::commit();
-                return redirect()->route('kasir.create')->with('success', 'Transaksi Cash Berhasil!');
+                    Cart::where('user_id', $user_id)->delete();
+                });
+
+                return redirect()->route('kasir.create')
+                    ->with('success', 'Transaksi Cash berhasil!');
+
             } catch (\Exception $e) {
-                DB::rollback();
                 return back()->with('error', $e->getMessage());
             }
         }
 
-        if ($request->metode_pembayaran == 'qris') {
+            if ($request->metode_pembayaran === 'qris') {
+
             DB::beginTransaction();
+
             try {
-                $invoice = 'INV-' . time();
                 foreach ($cartItems as $item) {
-                    $menu = $item->menu;
-
-                    $userCabangId = $user->cabang_id ?? $item->menu->cabang_id;
-                    $branchStok = $menu->getStokForCabang($userCabangId);
-
-                    // Validasi stok sebelum checkout QRIS
-                    if ($branchStok < $item->qty) {
-                        throw new \Exception('Stok menu ' . $menu->nama_menu . ' di cabang Anda tidak mencukupi (sisa: ' . $branchStok . ').');
-                    }
-
                     Transaksi::create([
-                        'invoice'           => $invoice,
-                        'menu_id'           => $item->menu_id,
-                        'cabang_id'         => $user->cabang_id ?? $item->menu->cabang_id,
-                        'qty'               => $item->qty,
-                        'total'             => $item->menu->harga * $item->qty,
-                        'tanggal'           => now(),
+                        'invoice' => $invoice,
+                        'menu_id' => $item->menu_id,
+                        'cabang_id' => $item->cabang_id,
+                        'qty' => $item->qty,
+                        'total' => $item->menu->harga * $item->qty,
+                        'tanggal' => now()->toDateString(),
                         'metode_pembayaran' => 'qris',
-                        'status'            => 'pending'
+                        'status' => 'pending',
                     ]);
                 }
-                Cart::where('user_id', $user_id)->delete(); // 🔥 KOSONGKAN KERANJANG SETELAH CHECKOUT QRIS
+
+                Cart::where('user_id', $user_id)->delete();
+
                 DB::commit();
-                
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+
+                return back()->with('error', $e->getMessage());
+            }
+
+            try {
                 // Integrasi DOKU tetap dipertahankan
                 $clientId = config('services.doku.client_id');
                 $secretKey = config('services.doku.secret_key');
@@ -233,9 +282,9 @@ class KasirController extends Controller
                 $timestamp = gmdate('Y-m-d\TH:i:s\Z');
                 $requestId = uniqid();
                 $user = Auth::user();
-\Log::info('APP_URL = ' . config('app.url'));
-\Log::info('CALLBACK URL = ' . url('/doku/callback'));
-\Log::info('RETURN URL = ' . url('/doku/return'));
+                \Log::info('APP_URL = ' . config('app.url'));
+                \Log::info('CALLBACK URL = ' . url('/doku/callback'));
+                \Log::info('RETURN URL = ' . url('/doku/return'));
                 $body = [
                     "order" => [
                         "invoice_number" => $invoice,
@@ -259,67 +308,76 @@ class KasirController extends Controller
                 ];
                 $jsonBody = json_encode($body);
 
-$digest = base64_encode(
-    hash('sha256', $jsonBody, true)
-);
+                $digest = base64_encode(
+                    hash('sha256', $jsonBody, true)
+                );
 
-$requestTarget = '/checkout/v1/payment';
+                $requestTarget = '/checkout/v1/payment';
 
-$signature = base64_encode(
-    hash_hmac(
-        'sha256',
-        "Client-Id:$clientId\n".
-        "Request-Id:$requestId\n".
-        "Request-Timestamp:$timestamp\n".
-        "Request-Target:$requestTarget\n".
-        "Digest:$digest",
-        $secretKey,
-        true
-    )
-);
+                $signature = base64_encode(
+                    hash_hmac(
+                        'sha256',
+                        "Client-Id:$clientId\n".
+                        "Request-Id:$requestId\n".
+                        "Request-Timestamp:$timestamp\n".
+                        "Request-Target:$requestTarget\n".
+                        "Digest:$digest",
+                        $secretKey,
+                        true
+                    )
+                );
 
-// DEBUG REQUEST
-\Log::info('===== DOKU REQUEST =====');
-\Log::info($jsonBody);
+                // DEBUG REQUEST
+                \Log::info('===== DOKU REQUEST =====');
+                \Log::info($jsonBody);
 
-$response = Http::withHeaders([
-    'Client-Id'         => $clientId,
-    'Request-Id'        => $requestId,
-    'Request-Timestamp' => $timestamp,
-    'Signature'         => "HMACSHA256=$signature",
-    'Digest'            => $digest,
-    'Content-Type'      => 'application/json'
-])->post(
-    $baseUrl . $requestTarget,
-    $body
-);
+                $response = Http::withHeaders([
+                    'Client-Id'         => $clientId,
+                    'Request-Id'        => $requestId,
+                    'Request-Timestamp' => $timestamp,
+                    'Signature'         => "HMACSHA256=$signature",
+                    'Digest'            => $digest,
+                    'Content-Type'      => 'application/json'
+                ])->post(
+                    $baseUrl . $requestTarget,
+                    $body
+                );
 
-// DEBUG RESPONSE
-\Log::info('===== DOKU RESPONSE =====');
-\Log::info($response->body());
+                // DEBUG RESPONSE
+                \Log::info('===== DOKU RESPONSE =====');
+                \Log::info($response->body());
 
-if ($response->failed()) {
-    \Log::error('===== DOKU ERROR =====');
-    \Log::error($response->body());
+                if ($response->failed()) {
+                    \Log::error('===== DOKU ERROR =====');
+                    \Log::error($response->body());
 
-    return back()->with(
-        'error',
-        'Doku Error: ' . $response->body()
-    );
-}
+                    return back()->with(
+                        'error',
+                        'Doku Error: ' . $response->body()
+                    );
+                }
 
-return redirect(
-    $response['response']['payment']['url']
-);
-            } catch (\Exception $e) {
-                DB::rollback();
-                return back()->with('error', 'QRIS Error: ' . $e->getMessage());
-            }
-        }
-    }
+                return redirect(
+                    $response['response']['payment']['url']
+                );
+                } catch (\Exception $e) {
+                    \Log::error('QRIS ERROR: ' . $e->getMessage());
+
+                    return back()->with(
+                        'error',
+                        'QRIS Error: ' . $e->getMessage()
+                    );
+                }
+
+            } 
+
+        } 
+
+    
 
     public function dokuReturn(Request $request)
     {
-        return redirect()->route('kasir.index')->with('success', 'Pembayaran DOKU selesai.');
+        return redirect()->route('kasir.index')
+            ->with('success', 'Pembayaran DOKU selesai.');
     }
 }

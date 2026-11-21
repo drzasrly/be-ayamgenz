@@ -42,10 +42,10 @@
         @csrf
 
         <div class="mb-4">
-            <label class="text-sm font-medium text-gray-600">Email</label>
-            <input type="email" name="email" value="{{ old('email') }}"
+            <label class="text-sm font-medium text-gray-600">Nama Pengguna</label>
+            <input type="text" name="name" value="{{ old('name') }}"
                 class="w-full mt-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:outline-none"
-                placeholder="nama@email.com"
+                placeholder="Masukkan nama pengguna"
                 required autofocus>
         </div>
 
