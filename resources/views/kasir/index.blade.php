@@ -217,11 +217,28 @@
                         @endif
                     </td>
 
+                    
                     <td class="text-center">
-                        <a href="/kasir/edit/{{ $t->id }}" class="btn btn-sm btn-outline-warning">
-                            <i class="fas fa-edit"></i>
-                        </a>
+                        <div class="d-flex justify-content-center gap-1">
+
+                            <a href="/kasir/edit/{{ $t->id }}"
+                            class="btn btn-sm btn-outline-warning"
+                            title="Edit transaksi">
+                                <i class="fas fa-edit"></i>
+                            </a>
+
+                            @if($t->status === 'success' && $t->invoice)
+                                <a href="{{ route('kasir.nota', ['invoice' => $t->invoice]) }}"
+                                target="_blank"
+                                class="btn btn-sm btn-outline-primary"
+                                title="Cetak nota">
+                                    <i class="fas fa-print"></i>
+                                </a>
+                            @endif
+
+                        </div>
                     </td>
+
 
                 </tr>
 

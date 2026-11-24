@@ -1,6 +1,12 @@
 <?php
 
+use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\Auth\EmailVerificationNotificationController;
+use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Auth\PasswordController;
+use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\CabangController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\StokController;
@@ -47,9 +53,19 @@ Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredUserController::class, 'store']);
 
-    // Fitur Lupa Password Sementara
-    Route::get('/forgot-password', [PasswordResetLinkController::class, 'create'])->name('password.request');
-    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])->name('password.email');
+    // Lupa Password
+    Route::get('/forgot-password', [PasswordResetLinkController::class, 'create'])
+        ->name('password.request');
+
+    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->name('password.email');
+
+    // Reset Password menggunakan token
+    Route::get('/reset-password/{token}', [NewPasswordController::class, 'create'])
+        ->name('password.reset');
+
+    Route::post('/reset-password', [NewPasswordController::class, 'store'])
+        ->name('password.store');
 });
 
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -66,6 +82,39 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Update password
+    Route::put('/password', [PasswordController::class, 'update'])
+        ->name('password.update');
+
+    // ==========================================
+    // EMAIL VERIFICATION
+    // ==========================================
+
+    // Menampilkan halaman pemberitahuan verifikasi email
+    Route::get('/verify-email', [EmailVerificationPromptController::class, '__invoke'])
+        ->name('verification.notice');
+
+    // Memproses link verifikasi email
+    Route::get('/verify-email/{id}/{hash}', [VerifyEmailController::class, '__invoke'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+
+    // Mengirim ulang email verifikasi
+    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('verification.send');
+
+    // ==========================================
+    // PASSWORD CONFIRMATION
+    // ==========================================
+
+    // Menampilkan halaman konfirmasi password
+    Route::get('/confirm-password', [ConfirmablePasswordController::class, 'show'])
+        ->name('password.confirm');
+
+    // Memproses konfirmasi password
+    Route::post('/confirm-password', [ConfirmablePasswordController::class, 'store']);
 
     // Kasir & Transaksi
     Route::resource('kasir', KasirController::class);
@@ -107,6 +156,10 @@ Route::middleware(['auth'])->group(function () {
         
     // Doku Payment Gateway Return
     Route::get('/doku/return', [KasirController::class, 'dokuReturn'])->name('doku.return');
+
+    Route::get('/kasir/nota/{invoice}', [KasirController::class, 'cetakNota'])
+    ->name('kasir.nota')
+    ->middleware('auth');
 });
 
 /*
