@@ -285,16 +285,15 @@ class KasirController extends Controller
                 \Log::info('APP_URL = ' . config('app.url'));
                 \Log::info('CALLBACK URL = ' . url('/doku/callback'));
                 \Log::info('RETURN URL = ' . url('/doku/return'));
+                
+                $publicBaseUrl = rtrim(config('app.url'), '/');
+
                 $body = [
                     "order" => [
                         "invoice_number" => $invoice,
                         "amount" => (int) $total,
-
-                        // Return user setelah pembayaran selesai
-                       "callback_url" => url('/doku/return'),
-
-                        // Endpoint webhook Laravel
-                       "notification_url" => url('/doku/callback')
+                        "callback_url" => $publicBaseUrl . '/doku/return',
+                        "notification_url" => $publicBaseUrl . '/doku/callback'
                     ],
 
                     "payment" => [
@@ -306,6 +305,11 @@ class KasirController extends Controller
                         "email" => $user->email
                     ]
                 ];
+
+                \Log::info('APP_URL = ' . config('app.url'));
+                \Log::info('CALLBACK URL = ' . $body['order']['notification_url']);
+                \Log::info('RETURN URL = ' . $body['order']['callback_url']);
+
                 $jsonBody = json_encode($body);
 
                 $digest = base64_encode(
@@ -337,11 +341,10 @@ class KasirController extends Controller
                     'Request-Timestamp' => $timestamp,
                     'Signature'         => "HMACSHA256=$signature",
                     'Digest'            => $digest,
-                    'Content-Type'      => 'application/json'
-                ])->post(
-                    $baseUrl . $requestTarget,
-                    $body
-                );
+                ])->withBody(
+                    $jsonBody,
+                    'application/json'
+                )->post($baseUrl . $requestTarget);
 
                 // DEBUG RESPONSE
                 \Log::info('===== DOKU RESPONSE =====');
@@ -380,4 +383,44 @@ class KasirController extends Controller
         return redirect()->route('kasir.index')
             ->with('success', 'Pembayaran DOKU selesai.');
     }
+
+
+    public function cetakNota($invoice)
+    {
+        $user = Auth::user();
+
+        // Ambil seluruh item berdasarkan invoice
+        $transaksi = Transaksi::with('menu')
+            ->where('invoice', $invoice)
+            ->orderBy('id')
+            ->get();
+
+        if ($transaksi->isEmpty()) {
+            abort(404, 'Transaksi tidak ditemukan.');
+        }
+
+        // Kasir hanya boleh mencetak nota cabangnya sendiri
+        if ($user->role !== 'admin') {
+            if ($transaksi->contains(
+                fn ($item) => (int) $item->cabang_id !== (int) $user->cabang_id
+            )) {
+                abort(403, 'Anda tidak memiliki akses ke nota ini.');
+            }
+        }
+
+        $first = $transaksi->first();
+
+        $cabang = Cabang::find($first->cabang_id);
+
+        $total = $transaksi->sum('total');
+
+        return view('kasir.nota', compact(
+            'transaksi',
+            'invoice',
+            'cabang',
+            'total'
+        ));
+    }
+
+
 }
