@@ -569,6 +569,7 @@
                                             method="POST"
                                             class="m-0">
                                             @csrf
+                                            @method('DELETE')
                                             <button type="submit"
                                                     class="btn btn-sm btn-light text-danger rounded-circle p-1"
                                                     style="width: 28px; height: 28px;">

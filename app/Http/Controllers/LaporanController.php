@@ -12,35 +12,30 @@ use App\Exports\LaporanExport;
 
 class LaporanController extends Controller
 {
-    public function index(Request $request)
+    private function buildFilteredQuery(Request $request)
     {
-        $cabangs = Cabang::all();
-
-        // =========================
-        // 🔥 BASE QUERY (SUCCESS ONLY)
-        // =========================
         $query = Transaksi::where('status', 'success');
 
-        // =========================
-        // 🔥 FILTER CABANG
-        // =========================
         if ($request->cabang_id) {
             $query->where('cabang_id', $request->cabang_id);
         }
 
-        // =========================
-        // 🔥 FILTER METODE
-        // =========================
         if ($request->metode) {
             $query->where('metode_pembayaran', $request->metode);
         }
 
-        // =========================
-        // 🔥 FILTER TANGGAL
-        // =========================
         if ($request->dari && $request->sampai) {
             $query->whereBetween('tanggal', [$request->dari, $request->sampai]);
         }
+
+        return $query;
+    }
+
+    public function index(Request $request)
+    {
+        $cabangs = Cabang::all();
+
+        $query = $this->buildFilteredQuery($request);
 
         // =========================
         // 🔥 DATA TRANSAKSI (DETAIL)
@@ -105,8 +100,9 @@ class LaporanController extends Controller
 
     public function exportPdf(Request $request)
     {
-        $data = Transaksi::with(['menu','cabang'])
-            ->where('status','success')
+        $data = $this->buildFilteredQuery($request)
+            ->with(['menu', 'cabang'])
+            ->latest()
             ->get();
 
         $pdf = Pdf::loadView('laporan.pdf', compact('data'));
@@ -116,6 +112,14 @@ class LaporanController extends Controller
 
     public function exportExcel(Request $request)
     {
-        return Excel::download(new LaporanExport, 'laporan.xlsx');
+        return Excel::download(
+            new LaporanExport(
+                $request->cabang_id,
+                $request->metode,
+                $request->dari,
+                $request->sampai
+            ),
+            'laporan.xlsx'
+        );
     }
 }

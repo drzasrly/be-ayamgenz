@@ -104,9 +104,14 @@
                 Qty: {{ $item->qty }}
             </div>
 
-            <form action="{{ route('cart.remove', $item->id) }}" method="GET">
-                <button class="btn-hapus">Hapus</button>
+            
+            <form action="{{ route('cart.remove', $item->id) }}" method="POST">
+                @csrf
+                @method('DELETE')
+
+                <button type="submit">Hapus</button>
             </form>
+
 
         </div>
         @endforeach

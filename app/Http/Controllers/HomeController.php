@@ -16,7 +16,8 @@ class HomeController extends Controller
         $user = Auth::user();
         $hariIni = Carbon::today();
 
-        $trxQuery = Transaksi::whereDate('tanggal', $hariIni);
+        $trxQuery = Transaksi::whereDate('tanggal', $hariIni)
+            ->where('status', 'success');
         if ($user && $user->role !== 'admin' && $user->cabang_id) {
             $trxQuery->where('cabang_id', $user->cabang_id);
         }

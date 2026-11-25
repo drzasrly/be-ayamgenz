@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\MenuCabangStok;
 use Illuminate\Database\Eloquent\Model;
 
 class Menu extends Model
@@ -14,7 +15,8 @@ class Menu extends Model
         'kategori',
         'stok',
         'cabang_id',
-        'gambar' 
+        'gambar',
+        'is_active' 
     ];
 
     public function cabang()
@@ -38,75 +40,73 @@ class Menu extends Model
     public function getStokForCabang($cabangId): int
     {
         if (!$cabangId) {
-            return (int) ($this->attributes['stok'] ?? 0);
+            return 0;
         }
 
-        // Cek jika relation cabangStoks sudah di-load
         if ($this->relationLoaded('cabangStoks')) {
-            $record = $this->cabangStoks->firstWhere('cabang_id', $cabangId);
-            return $record ? (int) $record->stok : 0;
+            $record = $this->cabangStoks->first(
+                fn ($item) => (int) $item->cabang_id === (int) $cabangId
+            );
+
+            return (int) ($record?->stok ?? 0);
         }
 
-        $record = MenuCabangStok::where('menu_id', $this->id)
+        return (int) MenuCabangStok::where('menu_id', $this->id)
             ->where('cabang_id', $cabangId)
-            ->first();
-
-        return $record ? (int) $record->stok : 0;
+            ->value('stok');
     }
 
-    /**
-     * Kurangi stok menu untuk cabang tertentu.
-     */
     public function decrementStokCabang($cabangId, int $qty): int
     {
-        if (!$cabangId) {
-            $this->decrement('stok', $qty);
-            $this->refresh();
-            return $this->stok;
+        if (!$cabangId || $qty <= 0) {
+            throw new \InvalidArgumentException('Cabang dan jumlah stok tidak valid.');
         }
 
-        $record = MenuCabangStok::firstOrCreate(
-            ['menu_id' => $this->id, 'cabang_id' => $cabangId],
-            ['stok' => 0]
-        );
+        $affected = MenuCabangStok::where('menu_id', $this->id)
+            ->where('cabang_id', $cabangId)
+            ->where('stok', '>=', $qty)
+            ->decrement('stok', $qty);
 
-        $record->decrement('stok', $qty);
-        $record->refresh();
-        return $record->stok;
+        if (!$affected) {
+            throw new \RuntimeException('Stok tidak tersedia atau tidak mencukupi.');
+        }
+
+        return $this->getStokForCabang($cabangId);
     }
 
-    /**
-     * Tambah stok menu untuk cabang tertentu.
-     */
     public function incrementStokCabang($cabangId, int $qty): int
     {
-        if (!$cabangId) {
-            $this->increment('stok', $qty);
-            $this->refresh();
-            return $this->stok;
+        if (!$cabangId || $qty <= 0) {
+            throw new \InvalidArgumentException('Cabang dan jumlah stok tidak valid.');
         }
 
         $record = MenuCabangStok::firstOrCreate(
-            ['menu_id' => $this->id, 'cabang_id' => $cabangId],
+            [
+                'menu_id' => $this->id,
+                'cabang_id' => $cabangId,
+            ],
             ['stok' => 0]
         );
 
         $record->increment('stok', $qty);
-        $record->refresh();
-        return $record->stok;
+
+        return (int) $record->fresh()->stok;
     }
 
-    /**
-     * Set stok spesifik untuk cabang tertentu.
-     */
     public function setStokCabang($cabangId, int $stok): MenuCabangStok
     {
+        if (!$cabangId || $stok < 0) {
+            throw new \InvalidArgumentException('Cabang atau jumlah stok tidak valid.');
+        }
+
         return MenuCabangStok::updateOrCreate(
-            ['menu_id' => $this->id, 'cabang_id' => $cabangId],
+            [
+                'menu_id' => $this->id,
+                'cabang_id' => $cabangId,
+            ],
             ['stok' => $stok]
         );
     }
-
     /**
      * Mendapatkan nama cabang atau 'Semua Cabang' jika global.
      */

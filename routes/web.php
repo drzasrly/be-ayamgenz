@@ -23,7 +23,7 @@ use App\Http\Controllers\LaporanController;
 use App\Http\Controllers\DokuController;
 
 // Doku Payment Gateway Webhook (Harus di luar Auth Middleware)
-Route::post('/doku/callback', [DokuController::class, 'callback']);
+// Route::post('/doku/callback', [DokuController::class, 'callback']);
 
 /*
 |--------------------------------------------------------------------------
@@ -50,8 +50,8 @@ Route::get('/', function () {
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
     Route::post('/login', [AuthenticatedSessionController::class, 'store']);
-    Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
-    Route::post('/register', [RegisteredUserController::class, 'store']);
+    // Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
+    // Route::post('/register', [RegisteredUserController::class, 'store']);
 
     // Lupa Password
     Route::get('/forgot-password', [PasswordResetLinkController::class, 'create'])
@@ -68,7 +68,7 @@ Route::middleware('guest')->group(function () {
         ->name('password.store');
 });
 
-Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+
 
 /*
 |--------------------------------------------------------------------------
@@ -116,8 +116,21 @@ Route::middleware(['auth'])->group(function () {
     // Memproses konfirmasi password
     Route::post('/confirm-password', [ConfirmablePasswordController::class, 'store']);
 
-    // Kasir & Transaksi
-    Route::resource('kasir', KasirController::class);
+    // Kasir dan transaksi
+    Route::get('/kasir', [KasirController::class, 'index'])
+        ->name('kasir.index');
+
+    Route::get('/kasir/create', [KasirController::class, 'create'])
+        ->name('kasir.create');
+
+    Route::post('/kasir', [KasirController::class, 'store'])
+        ->name('kasir.store');
+
+    Route::post('/checkout', [KasirController::class, 'checkout'])
+        ->name('checkout');
+
+    // Route::get('/kasir/nota/{invoice}', [KasirController::class, 'cetakNota'])
+    //     ->name('kasir.nota');
     
     // Menu (Akses Lihat)
     Route::get('/menu', [MenuController::class, 'index'])->name('menu.index');
@@ -141,8 +154,10 @@ Route::middleware(['auth'])->group(function () {
     | Menggunakan MenuController untuk fitur Tambah/Kurang agar lebih praktis.
     */
     Route::get('/cart', [KasirController::class, 'cart'])->name('cart');
-    Route::get('/cart/remove/{id}', [KasirController::class, 'removeCart'])->name('cart.remove');
-    Route::post('/checkout', [KasirController::class, 'checkout'])->name('checkout');
+    
+    Route::delete('/cart/remove/{id}', [KasirController::class, 'removeCart'])
+        ->name('cart.remove');
+
 
     // Fitur Tambah (+) dan Kurang (-) qty di Card Menu
    Route::post('/cart/add/{id}', [MenuController::class, 'add'])
@@ -151,15 +166,15 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/cart/decrease/{id}', [MenuController::class, 'decrease'])
         ->name('cart.decrease');
 
-    Route::post('/cart/remove/{id}', [KasirController::class, 'removeCart'])
-        ->name('cart.remove');
-        
-    // Doku Payment Gateway Return
-    Route::get('/doku/return', [KasirController::class, 'dokuReturn'])->name('doku.return');
+    // // Doku Payment Gateway Return
+    // Route::get('/doku/return', [KasirController::class, 'dokuReturn'])->name('doku.return');
 
     Route::get('/kasir/nota/{invoice}', [KasirController::class, 'cetakNota'])
     ->name('kasir.nota')
     ->middleware('auth');
+
+    Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
+    ->name('logout');
 });
 
 /*
@@ -176,6 +191,9 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::delete('/user/{id}', [UserController::class, 'destroy'])->name('user.destroy');
 
     // Manajemen Menu Lengkap (Create, Edit, Delete)
+    Route::post('/menu/{id}/toggle-status', [MenuController::class, 'toggleStatus'])
+        ->name('menu.toggleStatus');
+
     Route::resource('menu', MenuController::class)->except(['index']);
 
     // Laporan Operasional

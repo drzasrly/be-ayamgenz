@@ -123,9 +123,9 @@
         <div class="bold">NOTA PEMBELIAN</div>
     </div>
 
-    <div class="line"></div>
+    <!-- <div class="line"></div>
 
-    <div>Invoice: {{ $invoice }}</div>
+    <div>Invoice: {{ $invoice }}</div> -->
 
     <div>
         Tanggal:

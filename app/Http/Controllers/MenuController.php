@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use App\Models\MenuCabangStok;
 use Illuminate\Http\Request;
 use App\Models\Menu;
 use App\Models\Cabang;
@@ -17,15 +17,20 @@ class MenuController extends Controller
     public function index()
     {
         $user = Auth::user();
-        
-        // Admin melihat semua menu (baik global maupun spesifik cabang)
-        // User cabang melihat menu spesifik cabangnya + menu global (Semua Cabang)
-        $menu = ($user->role == 'admin') 
-            ? Menu::with('cabang')->get() 
-            : Menu::where(function($q) use ($user) {
-                $q->where('cabang_id', $user->cabang_id)
-                  ->orWhereNull('cabang_id');
-            })->with('cabang')->get();
+
+        if ($user->role === 'admin') {
+            // Admin tetap dapat melihat menu aktif dan nonaktif.
+            $menu = Menu::with('cabang')->get();
+        } else {
+            // Pengguna cabang hanya melihat menu aktif.
+            $menu = Menu::where('is_active', true)
+                ->where(function ($q) use ($user) {
+                    $q->where('cabang_id', $user->cabang_id)
+                    ->orWhereNull('cabang_id');
+                })
+                ->with('cabang')
+                ->get();
+        }
 
         return view('menu.index', compact('menu'));
     }
@@ -43,6 +48,8 @@ class MenuController extends Controller
             'nama_menu' => 'required|string|max:255',
             'harga' => 'required|integer|min:0',
             'kategori' => 'required|string',
+            'cabang_id' => 'nullable',
+            'gambar' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:15360',
         ]);
 
         // Jika admin memilih 'all' atau kosong, cabang_id = null (artinya berlaku untuk Semua Cabang)
@@ -123,11 +130,63 @@ class MenuController extends Controller
             ->with('success', 'Data menu berhasil diperbarui!');
     }
 
+    public function toggleStatus($id)
+    {
+        $menu = Menu::findOrFail($id);
+
+        $menu->is_active = !$menu->is_active;
+        $menu->save();
+
+        $status = $menu->is_active ? 'diaktifkan' : 'dinonaktifkan';
+
+        return redirect()->route('menu.index')
+            ->with('success', 'Menu "' . $menu->nama_menu . '" berhasil ' . $status . '.');
+    }
 
     public function destroy($id)
     {
-        Menu::findOrFail($id)->delete();
-        return redirect()->route('menu.index')->with('success', 'Menu berhasil dihapus');
+        $menu = Menu::findOrFail($id);
+
+        // Cegah penghapusan menu yang pernah digunakan dalam transaksi.
+        $pernahTransaksi = DB::table('transaksis')
+            ->where('menu_id', $menu->id)
+            ->exists();
+
+        if ($pernahTransaksi) {
+            return redirect()->route('menu.index')
+                ->with(
+                    'error',
+                    'Menu "' . $menu->nama_menu .
+                    '" tidak dapat dihapus karena memiliki riwayat transaksi. Nonaktifkan menu jika sudah tidak dijual.'
+                );
+        }
+
+        // Cegah penghapusan menu yang masih ada di keranjang.
+        $adaDiKeranjang = Cart::where('menu_id', $menu->id)->exists();
+
+        if ($adaDiKeranjang) {
+            return redirect()->route('menu.index')
+                ->with(
+                    'error',
+                    'Menu "' . $menu->nama_menu .
+                    '" tidak dapat dihapus karena masih berada di keranjang pengguna.'
+                );
+        }
+
+        // Hapus menu dan data terkait dalam satu transaksi database.
+        DB::transaction(function () use ($menu) {
+            $gambar = $menu->gambar;
+
+            $menu->delete();
+
+            // Hapus gambar hanya setelah penghapusan database berhasil.
+            if ($gambar && Storage::disk('public')->exists($gambar)) {
+                Storage::disk('public')->delete($gambar);
+            }
+        });
+
+        return redirect()->route('menu.index')
+            ->with('success', 'Menu berhasil dihapus.');
     }
 
     /**
@@ -139,65 +198,67 @@ class MenuController extends Controller
         $user = Auth::user();
         $menu = Menu::findOrFail($id);
 
-        // Tentukan cabang POS yang aktif
+        if (!$menu->is_active) {
+            return back()->with('error', 'Menu sudah tidak aktif dan tidak dapat dibeli.');
+        }
+
         $cabangId = $user->role === 'admin'
             ? (session('active_pos_cabang_id')
                 ?: ($user->cabang_id ?: Cabang::first()?->id))
             : $user->cabang_id;
 
-        if (!$cabangId) {
-            return back()->with('error', 'Cabang POS belum dipilih.');
+        if (!$cabangId || !Cabang::whereKey($cabangId)->exists()) {
+            return back()->with('error', 'Cabang POS belum dipilih atau tidak valid.');
         }
 
-        // Pastikan menu merupakan menu global atau milik cabang aktif
-        if ($menu->cabang_id !== null &&
-            (int) $menu->cabang_id !== (int) $cabangId) {
+        if (
+            $menu->cabang_id !== null &&
+            (int) $menu->cabang_id !== (int) $cabangId
+        ) {
             return back()->with('error', 'Menu tidak tersedia di cabang ini.');
         }
 
-        $stokTersedia = $menu->getStokForCabang($cabangId);
+        try {
+            DB::transaction(function () use ($user, $menu, $cabangId) {
+                $stok = MenuCabangStok::where('menu_id', $menu->id)
+                    ->where('cabang_id', $cabangId)
+                    ->lockForUpdate()
+                    ->first();
 
-        if ($stokTersedia <= 0) {
-            return back()->with('error',
-                'Stok menu "' . $menu->nama_menu . '" sedang kosong.');
-        }
+                if (!$stok || $stok->stok <= 0) {
+                    throw new \RuntimeException(
+                        'Stok menu "' . $menu->nama_menu . '" sedang kosong.'
+                    );
+                }
 
-        // // Jangan mencampur keranjang dari cabang berbeda
-        // $keranjangLama = Cart::where('user_id', $user->id)->get();
+                $cartItem = Cart::where('user_id', $user->id)
+                    ->where('menu_id', $menu->id)
+                    ->where('cabang_id', $cabangId)
+                    ->lockForUpdate()
+                    ->first();
 
-        // foreach ($keranjangLama as $item) {
-        //     if (
-        //         $item->cabang_id === null ||
-        //         (int) $item->cabang_id !== (int) $cabangId
-        //     ) {
-        //         return back()->with(
-        //             'error',
-        //             'Keranjang masih berisi pesanan dari cabang lain. Kosongkan keranjang terlebih dahulu.'
-        //         );
-        //     }
-        // }
+                $currentQty = $cartItem?->qty ?? 0;
 
-        $cartItem = Cart::where('user_id', $user->id)
-            ->where('menu_id', $id)
-            ->where('cabang_id', $cabangId)
-            ->first();
+                if ($currentQty >= $stok->stok) {
+                    throw new \RuntimeException(
+                        'Jumlah pesanan sudah mencapai batas stok (' . $stok->stok . ').'
+                    );
+                }
 
-        $currentQty = $cartItem ? $cartItem->qty : 0;
+                if ($cartItem) {
+                    $cartItem->increment('qty');
+                } else {
+                    Cart::create([
+                        'user_id' => $user->id,
+                        'menu_id' => $menu->id,
+                        'cabang_id' => $cabangId,
+                        'qty' => 1,
+                    ]);
+                }
+            });
 
-        if ($currentQty >= $stokTersedia) {
-            return back()->with('error',
-                'Jumlah pesanan sudah mencapai batas stok (' . $stokTersedia . ').');
-        }
-
-        if ($cartItem) {
-            $cartItem->increment('qty');
-        } else {
-            Cart::create([
-                'user_id' => $user->id,
-                'menu_id' => $id,
-                'cabang_id' => $cabangId,
-                'qty' => 1,
-            ]);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
         }
 
         return back();

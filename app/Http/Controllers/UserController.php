@@ -22,22 +22,33 @@ class UserController extends Controller
             abort(403);
         }
 
-        $request->validate([
-            'name' => 'required',
-            'email' => 'required|email|unique:users',
-            'password' => 'required|min:6',
-            'cabang_id' => 'required'
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:users,name',
+            'email' => 'required|string|email|max:255|unique:users,email',
+            'password' => 'required|string|min:6',
+            'cabang_id' => 'required|integer|exists:cabangs,id',
+        ], [
+            'name.required' => 'Nama pengguna wajib diisi.',
+            'name.unique' => 'Nama pengguna sudah digunakan.',
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'email.unique' => 'Email sudah digunakan.',
+            'password.required' => 'Password wajib diisi.',
+            'password.min' => 'Password minimal 6 karakter.',
+            'cabang_id.required' => 'Cabang wajib dipilih.',
+            'cabang_id.exists' => 'Cabang yang dipilih tidak ditemukan.',
         ]);
 
         User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => bcrypt($request->password),
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => bcrypt($validated['password']),
             'role' => 'cabang',
-            'cabang_id' => $request->cabang_id
+            'cabang_id' => $validated['cabang_id'],
         ]);
 
-        return redirect()->route('user.create')->with('success', 'User cabang berhasil dibuat!');
+        return redirect()->route('user.create')
+            ->with('success', 'User cabang berhasil dibuat!');
     }
 
     public function destroy($id)

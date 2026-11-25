@@ -117,9 +117,28 @@
         </div>
     </div>
 
+    @if(session('success'))
+        <div class="alert alert-success border-0 shadow-sm mb-4">
+            <i class="fas fa-check-circle me-2"></i>
+            {{ session('success') }}
+        </div>
+    @endif
+
     @if(session('error'))
         <div class="alert alert-danger border-0 shadow-sm mb-4">
-            <i class="fas fa-exclamation-circle me-2"></i> {{ session('error') }}
+            <i class="fas fa-exclamation-circle me-2"></i>
+            {{ session('error') }}
+        </div>
+    @endif
+
+    @if($errors->any())
+        <div class="alert alert-danger border-0 shadow-sm mb-4">
+            <strong>Periksa kembali data yang dimasukkan:</strong>
+            <ul class="mb-0 mt-2">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
         </div>
     @endif
 
@@ -132,30 +151,70 @@
                     <h5 class="mb-0 fw-bold"><i class="fas fa-user-plus me-2"></i> Tambah User Baru</h5>
                 </div>
                 <div class="card-body p-4">
-                    <form method="POST" action="{{ route('user.store') }}">
+                    <form method="POST" action="{{ route('user.store') }}" autocomplete="off">
                         @csrf
 
                         <div class="form-group-kfc">
-                            <label>Nama Lengkap</label>
-                            <input type="text" name="name" class="form-control-kfc" placeholder="Masukkan nama user..." required>
+                            <label for="name">Nama Lengkap</label>
+                            <input
+                                type="text"
+                                id="name"
+                                name="name"
+                                class="form-control-kfc"
+                                placeholder="Masukkan nama user..."
+                                value="{{ old('name') }}"
+                                maxlength="255"
+                                autocomplete="off"
+                                required
+                            >
                         </div>
 
                         <div class="form-group-kfc">
-                            <label>Alamat Email</label>
-                            <input type="email" name="email" class="form-control-kfc" placeholder="Masukkan email..." required>
+                            <label for="email">Alamat Email</label>
+                            <input
+                                type="email"
+                                id="email"
+                                name="email"
+                                class="form-control-kfc"
+                                placeholder="Masukkan email..."
+                                value="{{ old('email') }}"
+                                maxlength="255"
+                                autocomplete="off"
+                                required
+                            >
                         </div>
 
                         <div class="form-group-kfc">
-                            <label>Password</label>
-                            <input type="password" name="password" class="form-control-kfc" placeholder="Minimal 6 karakter..." required>
+                            <label for="password">Password</label>
+                            <input
+                                type="password"
+                                id="password"
+                                name="password"
+                                class="form-control-kfc"
+                                placeholder="Minimal 6 karakter..."
+                                minlength="6"
+                                autocomplete="new-password"
+                                required
+                            >
                         </div>
 
                         <div class="form-group-kfc">
-                            <label>Pilih Cabang Bertugas</label>
-                            <select name="cabang_id" class="form-control-kfc" required>
+                            <label for="cabang_id">Pilih Cabang Bertugas</label>
+                            <select
+                                id="cabang_id"
+                                name="cabang_id"
+                                class="form-control-kfc"
+                                required
+                            >
                                 <option value="">-- Pilih Cabang --</option>
+
                                 @foreach($cabangs as $c)
-                                    <option value="{{ $c->id }}">{{ $c->nama_cabang }}</option>
+                                    <option
+                                        value="{{ $c->id }}"
+                                        {{ old('cabang_id') == $c->id ? 'selected' : '' }}
+                                    >
+                                        {{ $c->nama_cabang }}
+                                    </option>
                                 @endforeach
                             </select>
                         </div>
@@ -164,6 +223,7 @@
                             <i class="fas fa-save me-1"></i> Simpan User
                         </button>
                     </form>
+
                 </div>
             </div>
         </div>

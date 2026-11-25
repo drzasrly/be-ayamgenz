@@ -144,25 +144,55 @@
 
                 <!-- TOMBOL BELI -->
                 <div class="mt-auto">
-                    <a href="{{ route('cart.add', $m->id) }}" class="btn btn-mini btn-add shadow-sm">
-                        <i class="fas fa-plus me-1"></i> Beli
-                    </a>
+                    @if($m->is_active)
+                        <form action="{{ route('cart.add', $m->id) }}" method="POST">
+                            @csrf
+                            <button type="submit" class="btn btn-mini btn-add shadow-sm">
+                                <i class="fas fa-plus me-1"></i> Beli
+                            </button>
+                        </form>
+                    @else
+                        <button type="button" class="btn btn-mini btn-out shadow-sm" disabled>
+                            <i class="fas fa-ban me-1"></i> Menu Nonaktif
+                        </button>
+                    @endif
                 </div>
+
 
                 <!-- ADMIN TOOLS (EDIT KUNING, HAPUS MERAH) -->
                 @if(auth()->user()->role == 'admin')
-                <div class="admin-tools">
-                    <a href="{{ route('menu.edit', $m->id) }}" class="btn-tool btn-edit-admin shadow-sm">
-                        <i class="fa fa-edit"></i>
-                    </a>
-                    <form action="{{ route('menu.destroy', $m->id) }}" method="POST" style="flex:1">
-                        @csrf 
-                        @method('DELETE')
-                        <button type="submit" class="btn-tool btn-delete-admin shadow-sm w-100" onclick="return confirm('Hapus menu ini?')">
-                            <i class="fa fa-trash"></i>
-                        </button>
-                    </form>
-                </div>
+                    <div class="admin-tools">
+                        <a href="{{ route('menu.edit', $m->id) }}"
+                        class="btn-tool btn-edit-admin shadow-sm"
+                        title="Edit Menu">
+                            <i class="fa fa-edit"></i>
+                        </a>
+
+                        <form action="{{ route('menu.toggleStatus', $m->id) }}"
+                            method="POST"
+                            style="flex: 1">
+                            @csrf
+                            <button type="submit"
+                                    class="btn-tool shadow-sm w-100 {{ $m->is_active ? 'btn-warning' : 'btn-success' }}"
+                                    title="{{ $m->is_active ? 'Nonaktifkan Menu' : 'Aktifkan Menu' }}"
+                                    onclick="return confirm('Yakin ingin {{ $m->is_active ? 'menonaktifkan' : 'mengaktifkan' }} menu ini?')">
+                                <i class="fas {{ $m->is_active ? 'fa-toggle-on' : 'fa-toggle-off' }}"></i>
+                            </button>
+                        </form>
+
+                        <form action="{{ route('menu.destroy', $m->id) }}"
+                            method="POST"
+                            style="flex: 1">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit"
+                                    class="btn-tool btn-delete-admin shadow-sm w-100"
+                                    title="Hapus Menu"
+                                    onclick="return confirm('Hapus menu ini?')">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
                 @endif
             </div>
         </div>

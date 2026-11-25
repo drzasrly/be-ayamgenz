@@ -15,7 +15,7 @@ class MenuController extends Controller
     {
         $user = $request->user();
         
-        $query = Menu::with('cabang');
+        $query = Menu::where('is_active', true)->with('cabang');
 
         // Jika bukan admin, melihat menu dari cabangnya sendiri + menu global (semua cabang)
         if ($user->role !== 'admin') {
@@ -69,6 +69,13 @@ class MenuController extends Controller
     {
         $user = $request->user();
         $menu = Menu::with('cabang')->findOrFail($id);
+
+        if (!$menu->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Menu tidak tersedia.'
+            ], 404);
+        }
 
         // Validasi akses cabang (menu global cabang_id null bisa diakses semua cabang)
         if ($user->role !== 'admin' && $menu->cabang_id !== null && $menu->cabang_id !== $user->cabang_id) {

@@ -98,12 +98,15 @@ class TransaksiController extends Controller
                 foreach ($items as $item) {
                     $menu = $item['menu'];
 
-                    // Kurangi stok menu cabang (nasi selalu tersedia tetapi tetap dikurangi)
-                    $isNasi = (stripos($menu->nama_menu, 'nasi') !== false);
+                    // Kurangi stok menu cabang
                     $userCabangId = $user->cabang_id ?? $menu->cabang_id;
                     $branchStok = $menu->getStokForCabang($userCabangId);
 
-                    if ($isNasi || $branchStok >= $item['qty']) {
+                    if (!$menu->is_active) {
+                        throw new \Exception('Menu ' . $menu->nama_menu . ' sudah tidak aktif.');
+                    }
+
+                    if ($branchStok >= $item['qty']) {
                         $menu->decrementStokCabang($userCabangId, $item['qty']);
                     } else {
                         throw new \Exception('Stok menu ' . $menu->nama_menu . ' di cabang Anda tidak mencukupi (sisa: ' . $branchStok . ').');

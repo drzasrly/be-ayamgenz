@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use App\Models\Transaksi;
 use App\Models\Cabang;
@@ -37,16 +38,22 @@ class KasirController extends Controller
                 session(['active_pos_cabang_id' => $request->cabang_id]);
             }
             $targetCabang = session('active_pos_cabang_id') ?: ($user->cabang_id ?: $cabang->first()?->id);
-            $menu = Menu::where(function($q) use ($targetCabang) {
+            $menu = Menu::where('is_active', true)
+            ->where(function ($q) use ($targetCabang) {
                 $q->where('cabang_id', $targetCabang)
-                  ->orWhereNull('cabang_id');
-            })->with(['cabang', 'cabangStoks'])->get();
+                ->orWhereNull('cabang_id');
+            })
+            ->with(['cabang', 'cabangStoks'])
+            ->get();
         } else {
             $targetCabang = $user->cabang_id;
-            $menu = Menu::where(function($q) use ($user) {
+            $menu = Menu::where('is_active', true)
+            ->where(function ($q) use ($user) {
                 $q->where('cabang_id', $user->cabang_id)
-                  ->orWhereNull('cabang_id');
-            })->with(['cabang', 'cabangStoks'])->get();
+                ->orWhereNull('cabang_id');
+            })
+            ->with(['cabang', 'cabangStoks'])
+            ->get();
         }
 
         // Tampilkan stok sesuai cabang yang aktif/sedang membuka kasir
@@ -65,6 +72,29 @@ class KasirController extends Controller
         return view('kasir.create', compact('menu', 'cabang', 'cart', 'totalCart', 'targetCabang'));
     }
 
+
+    public function cart()
+    {
+        $user = Auth::user();
+
+        // Tentukan cabang aktif
+        if ($user->role === 'admin') {
+            $targetCabang = session('active_pos_cabang_id')
+                ?: ($user->cabang_id ?: Cabang::first()?->id);
+        } else {
+            $targetCabang = $user->cabang_id;
+        }
+
+        // Ambil keranjang milik pengguna dan cabang aktif
+        $cart = Cart::with('menu')
+            ->where('user_id', $user->id)
+            ->where('cabang_id', $targetCabang)
+            ->get();
+
+        return view('kasir.cart', compact('cart'));
+    }
+
+
     public function store(Request $request)
     {
         $request->validate([
@@ -75,9 +105,27 @@ class KasirController extends Controller
         $user = Auth::user();
         $menu = Menu::findOrFail($request->menu_id);
 
-        $cabangId = ($user->role == 'admin') 
-            ? (session('active_pos_cabang_id') ?: ($user->cabang_id ?: Cabang::first()?->id)) 
+        if (!$menu->is_active) {
+            return back()->with('error', 'Menu sudah tidak aktif dan tidak dapat dibeli.');
+        }
+
+        $cabangId = ($user->role === 'admin')
+            ? (session('active_pos_cabang_id') ?: ($user->cabang_id ?: Cabang::first()?->id))
             : $user->cabang_id;
+
+        if (
+            !$cabangId ||
+            !Cabang::whereKey($cabangId)->exists()
+        ) {
+            return back()->with('error', 'Cabang POS tidak valid.');
+        }
+
+        if (
+            $menu->cabang_id !== null &&
+            (int) $menu->cabang_id !== (int) $cabangId
+        ) {
+            return back()->with('error', 'Menu tidak tersedia di cabang ini.');
+        }
 
         $stokTersedia = $menu->getStokForCabang($cabangId);
 
@@ -158,81 +206,121 @@ class KasirController extends Controller
 
     public function checkout(Request $request)
     {
-        $request->validate([
-            'metode_pembayaran' => 'required|in:cash,qris'
+        $validated = $request->validate([
+            'metode_pembayaran' => 'required|in:cash,qris',
         ]);
 
         $user = Auth::user();
-        $userId = $user->id;
-
-        // Ambil keranjang milik pengguna
-        $cartItems = Cart::with('menu')
-            ->where('user_id', $userId)
-            ->get();
-
-        if ($cartItems->isEmpty()) {
-            return back()->with('error', 'Keranjang kosong.');
-        }
-
-        // Pastikan semua menu masih tersedia
-        $cartItems = $cartItems->filter(
-            fn($item) => $item->menu !== null
-        );
-
-        if ($cartItems->isEmpty()) {
-            return back()->with('error', 'Menu dalam keranjang tidak ditemukan.');
-        }
-
-        // Pastikan semua item memiliki cabang
-        foreach ($cartItems as $item) {
-            if (!$item->cabang_id) {
-                return back()->with(
-                    'error',
-                    'Ada pesanan yang belum memiliki cabang. Silakan masukkan ulang menu.'
-                );
-            }
-        }
-
-        // Pastikan transaksi hanya berasal dari satu cabang
-        if ($cartItems->pluck('cabang_id')->unique()->count() > 1) {
-            return back()->with(
-                'error',
-                'Keranjang tidak boleh mencampur cabang.'
-            );
-        }
-
-        $invoice = 'INV-' . strtoupper(uniqid());
-        $metodePembayaran = $request->metode_pembayaran;
 
         try {
-            DB::transaction(function () use (
-                $cartItems,
-                $userId,
-                $invoice,
-                $metodePembayaran
-            ) {
-                foreach ($cartItems as $item) {
-                    $menu = $item->menu;
-                    $cabangId = $item->cabang_id;
+            $invoice = DB::transaction(function () use ($user, $validated) {
 
-                    // Kunci stok agar tidak terjadi pengurangan bersamaan
+                // Ambil dan kunci keranjang di dalam transaksi
+                $cartItems = Cart::where('user_id', $user->id)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($cartItems->isEmpty()) {
+                    throw new \RuntimeException('Keranjang kosong.');
+                }
+
+                // Pastikan semua item memiliki menu dan cabang
+                $cartItems->load('menu');
+
+                foreach ($cartItems as $item) {
+                    if (!$item->menu || !$item->cabang_id || $item->qty <= 0) {
+                        throw new \RuntimeException(
+                            'Data keranjang tidak valid. Silakan periksa kembali pesanan.'
+                        );
+                    }
+                }
+
+                // Pastikan hanya satu cabang dalam satu transaksi
+                $cabangIds = $cartItems->pluck('cabang_id')
+                    ->unique()
+                    ->values();
+
+                if ($cabangIds->count() !== 1) {
+                    throw new \RuntimeException(
+                        'Keranjang tidak boleh mencampur pesanan dari cabang berbeda.'
+                    );
+                }
+
+                $cabangId = (int) $cabangIds->first();
+
+                // Pegawai hanya boleh checkout untuk cabangnya sendiri
+                if (
+                    $user->role !== 'admin' &&
+                    (int) $user->cabang_id !== $cabangId
+                ) {
+                    throw new \RuntimeException(
+                        'Anda tidak memiliki akses ke transaksi cabang ini.'
+                    );
+                }
+
+                // Admin harus checkout dari cabang POS yang sedang aktif
+                if ($user->role === 'admin') {
+                    $activeCabangId = session('active_pos_cabang_id')
+                        ?: ($user->cabang_id ?: Cabang::first()?->id);
+
+                    if (!$activeCabangId || (int) $activeCabangId !== $cabangId) {
+                        throw new \RuntimeException(
+                            'Cabang keranjang tidak sesuai dengan cabang POS aktif.'
+                        );
+                    }
+                }
+
+                $invoice = 'INV-' . strtoupper(
+                    (string) \Illuminate\Support\Str::uuid()
+                );
+
+                foreach ($cartItems as $item) {
+                    $menu = Menu::whereKey($item->menu_id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$menu) {
+                        throw new \RuntimeException(
+                            'Menu dalam keranjang tidak ditemukan.'
+                        );
+                    }
+
+                    if (!$menu->is_active) {
+                        throw new \RuntimeException(
+                            'Menu "' . $menu->nama_menu .
+                            '" sudah tidak aktif. Silakan hapus dari keranjang.'
+                        );
+                    }
+
+                    // Menu harus global atau milik cabang transaksi
+                    if (
+                        $menu->cabang_id !== null &&
+                        (int) $menu->cabang_id !== $cabangId
+                    ) {
+                        throw new \RuntimeException(
+                            'Menu ' . $menu->nama_menu .
+                            ' tidak tersedia di cabang ini.'
+                        );
+                    }
+
+                    // Kunci stok cabang
                     $stok = MenuCabangStok::where('menu_id', $menu->id)
                         ->where('cabang_id', $cabangId)
                         ->lockForUpdate()
                         ->first();
 
                     if (!$stok || $stok->stok < $item->qty) {
-                        throw new \Exception(
+                        throw new \RuntimeException(
                             'Stok ' . $menu->nama_menu .
                             ' tidak mencukupi. Stok tersedia: ' .
                             ($stok->stok ?? 0)
                         );
                     }
 
-                    // Kurangi stok
+                    // Kurangi stok hanya pada cabang transaksi
                     $stok->decrement('stok', $item->qty);
 
-                    // Simpan transaksi
                     Transaksi::create([
                         'invoice' => $invoice,
                         'menu_id' => $menu->id,
@@ -240,22 +328,33 @@ class KasirController extends Controller
                         'qty' => $item->qty,
                         'total' => $menu->harga * $item->qty,
                         'tanggal' => now()->toDateString(),
-                        'metode_pembayaran' => $metodePembayaran,
+                        'metode_pembayaran' => $validated['metode_pembayaran'],
                         'status' => 'success',
                     ]);
                 }
 
-                // Kosongkan keranjang setelah transaksi berhasil
-                Cart::where('user_id', $userId)->delete();
-            });
+                // Hapus hanya item keranjang yang diproses
+                $cartIds = $cartItems->pluck('id');
 
-            // Cash dan QRIS langsung menuju halaman nota
+                Cart::where('user_id', $user->id)
+                    ->whereIn('id', $cartIds)
+                    ->delete();
+
+                return $invoice;
+            }, 3);
+
             return redirect()->route('kasir.nota', [
-                'invoice' => $invoice
+                'invoice' => $invoice,
             ]);
 
-        } catch (\Exception $e) {
-            return back()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = $e instanceof \RuntimeException
+                ? $e->getMessage()
+                : 'Checkout gagal. Silakan coba kembali.';
+
+            return back()->with('error', $message);
         }
     }
 

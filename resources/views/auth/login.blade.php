@@ -65,16 +65,11 @@
                 required>
         </div>
 
-        <button type="submit"
+                <button type="submit"
             class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-lg shadow transition">
             Login
         </button>
     </form>
-
-    <p class="text-center text-sm text-gray-500 mt-5">
-        Belum punya akun?
-        <a href="{{ route('register') }}" class="text-orange-600 font-semibold hover:underline">Register</a>
-    </p>
 
 </div>
 
